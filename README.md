@@ -1,5 +1,7 @@
 # Multi-Format Hybrid RAG System
 
+Statut: IN PROGRESS...
+
 Système RAG utilisant Mistral, LangChain et pgvector.
 
 ## Features
