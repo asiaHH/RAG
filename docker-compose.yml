@@ -9,6 +9,25 @@ services:
       POSTGRES_DB: vector_db
     volumes:
       - db_data:/var/lib/postgresql/data
+    networks:
+      - rag_net
+  
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    ports:
+      - "8080:80"
+    depends_on:
+      - db
+    networks:
+      - rag_net
+
+networks:
+  rag_net:
+    driver: bridge
 
 volumes:
   db_data:
