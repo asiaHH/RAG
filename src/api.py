@@ -10,7 +10,7 @@ import shutil
 from typing import List
 import logging
 from fastapi.responses import JSONResponse
-from src.ingestion.pipeline import vector_store, init_vector_store
+from src.ingestion import pipeline, sync
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -33,6 +33,18 @@ async def global_exception_handler(request: Request, exc: Exception):
     """
     logger.error("Error: %s\n%s", exc, traceback.format_exc())
     return JSONResponse(status_code=500, content={"detail": "Internal error of the server"})
+
+# @app.on_event("startup")
+# async def startup_event():
+#     """
+#     Event handler for application startup. Initializes the vector store and logs the status of the connection.
+#     """
+#     global vector_store
+#     vector_store = init_vector_store()
+#     if vector_store is not None:
+#         logger.info("PGVector connection successful")
+#     else:
+#         logger.error("PGVector connection failed")
 
 @app.get("/")
 def read_root():
@@ -65,11 +77,11 @@ async def sync_collection_endpoint(request: SyncRequest = None):
     """
     directory = request.directory if request else "data"
     try:
-        if vector_store is None:
-            vector_store = init_vector_store()
+        if pipeline.vector_store is None:
+            pipeline.init_vector_store()
 
-        vector_store = rag.sync_collection(directory)
-        vector_store = vector_store
+        sync.sync_collection(directory)
+
         return {"status": f"Collection {os.path.basename(directory)} synchronised with success"}
     except Exception as e:
         logger.error(f"Error during synchronization: {e}")
@@ -83,11 +95,12 @@ async def ask_question(request: RequestModel):
     :param request: A RequestModel object containing the user's question
     :return: A response containing the answer and the sources with metadata
     """
-    if vector_store is None:
+    pipeline.init_vector_store()
+    if pipeline.vector_store is None:
         raise HTTPException(status_code=400, detail="Please upload a PDF first via /upload")
     
     try:
-        result = generate_response(vector_store, request.query)
+        result = generate_response(pipeline.vector_store, request.query)
         answer = result["answer"]
         docs = result["sources"]
 

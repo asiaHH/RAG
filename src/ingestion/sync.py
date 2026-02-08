@@ -1,7 +1,7 @@
-from db.catalog import DocumentCatalog
-from config import PSYCOPG2_CONNECTION_STRING
-from loaders import ingest_pdf, ingest_txt, ingest_pptx, ingest_excel, ingest_csv, ingest_unstructured_files
-from pipeline import init_vector_store
+from src.db.catalog import DocumentCatalog
+from src.config import PSYCOPG2_CONNECTION_STRING
+from src.ingestion.loaders import ingest_pdf, ingest_txt, ingest_pptx, ingest_excel, ingest_csv, ingest_unstructured_files
+from src.ingestion import pipeline
 
 def sync_collection(directory: str = "data"):
     """
@@ -18,7 +18,7 @@ def sync_collection(directory: str = "data"):
     current_files = catalog.scan_directory(directory)
     if not current_files:
         print("No files found in the directory.")
-        return vector_store
+        return pipeline.vector_store
 
     indexed_files = catalog.get_indexed_files()
     indexed_set = {f["source_id"]for f in indexed_files}
@@ -44,12 +44,12 @@ def sync_collection(directory: str = "data"):
             print(f"Deleted File: {indexed['file_path']}")
     print(f"{len(to_add)} to add, {len(to_delete)} to delete")
 
-    if vector_store is None:
-        vector_store = init_vector_store()
+    if pipeline.vector_store is None:
+        pipeline.init_vector_store()
     
     for source_id in set(to_delete):
         print(f"Removal of {source_id}...")
-        vector_store.delete(where={"source_id": source_id})
+        pipeline.vector_store.delete(where={"source_id": source_id})
         catalog.delete_file(source_id)
 
     for file_info in to_add:
@@ -70,4 +70,4 @@ def sync_collection(directory: str = "data"):
             ingest_unstructured_files(file_info["file_path"], source_id=file_info["source_id"])
 
     print("Synchronization completed.")
-    return vector_store
+    return pipeline.vector_store

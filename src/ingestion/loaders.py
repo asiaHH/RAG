@@ -3,8 +3,8 @@ from langchain_community.document_loaders import TextLoader, CSVLoader, PyPDFLoa
 from langchain_community.document_loaders.powerpoint import UnstructuredPowerPointLoader
 from langchain_community.document_loaders import DataFrameLoader
 import pandas as pd
-from pipeline import vector_store, init_vector_store
-from config import CHUNK_OVERLAP, CHUNK_SIZE
+from src.ingestion.pipeline import vector_store, init_vector_store
+from src.config import CHUNK_OVERLAP, CHUNK_SIZE
 
 def ingest_pdf(path, source_id=None):
     """

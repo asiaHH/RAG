@@ -1,4 +1,4 @@
-from config import CONNECTION_STRING, embeddings
+from src.config import CONNECTION_STRING, embeddings
 from langchain_community.vectorstores import PGVector
 
 vector_store = None
