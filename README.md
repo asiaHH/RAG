@@ -3,6 +3,9 @@
 Ce projet implémente un système RAG (Retrieval Augmented Generation)
 permettant d’indexer, synchroniser et interroger des documents
 multiformats (PDF, TXT, PPTX, XLSX, CSV).
+Statut: IN PROGRESS...
+
+Système RAG utilisant Mistral, LangChain et pgvector.
 
 Statut: IN PROGRESS...
 
@@ -39,3 +42,4 @@ Reste à réaliser:
 2. `pip install -r requirements.txt`
 3. `streamlit run app.py`
 ...
+
