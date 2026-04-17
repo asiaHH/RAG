@@ -1,6 +1,6 @@
 from src.db.catalog import DocumentCatalog
 from src.config import PSYCOPG2_CONNECTION_STRING
-from src.ingestion.loaders import ingest_pdf, ingest_txt, ingest_pptx, ingest_excel, ingest_csv, ingest_unstructured_files
+from src.ingestion.loaders import ingest_pdf, ingest_txt, ingest_pptx, ingest_excel, ingest_csv, ingest_docx, ingest_unstructured_files
 from src.ingestion import pipeline
 
 def sync_collection(directory: str = "data"):
@@ -66,6 +66,8 @@ def sync_collection(directory: str = "data"):
             ingest_excel(file_info["file_path"], source_id=file_info["source_id"])
         elif path.endswith(".csv"):
             ingest_csv(file_info["file_path"], source_id=file_info["source_id"])
+        elif path.endswith(".docx"):
+            ingest_docx(file_info["file_path"], source_id=file_info["source_id"])
         else:
             ingest_unstructured_files(file_info["file_path"], source_id=file_info["source_id"])
 

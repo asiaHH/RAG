@@ -45,13 +45,20 @@ with col1:
                     st.sidebar.error("Erreur lors de l'upload des fichiers.")
 with col2:
     if st.sidebar.button("Sync Répertoire", type="primary"):
-        if directory_path and os.path.isdir(directory_path):
+        if not directory_path:
+            st.sidebar.error("Veuillez entrer un chemin de répertoire valide.")
+        elif not os.path.isdir(directory_path):
+            st.sidebar.error(f"Le chemin '{directory_path}' n'existe pas.")
+        else:
             with st.spinner("Synchronisation en cours..."):
-                resp = requests.post("http://127.0.0.1:8000/sync")
-                if resp.status_code == 200:
-                    st.sidebar.success("Répertoire synchronisé !")
-                else:
-                    st.sidebar.error("Erreur lors de la synchronisation du répertoire.")
+                try:
+                    resp = requests.post("http://127.0.0.1:8000/sync", json={"directory": directory_path})
+                    if resp.status_code == 200:
+                        st.sidebar.success("Répertoire synchronisé !")
+                    else:
+                        st.sidebar.error(f"Erreur API: {resp.status_code} - {resp.text}")
+                except Exception as e:
+                    st.sidebar.error(f"Erreur lors de la synchronisation du répertoire: {e}")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
