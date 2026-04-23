@@ -50,13 +50,17 @@ Principe : nettoyer le minimum nécessaire, chaque transformation supprime de l'
 ## Roadmap
 
 ### Version actuelle (v1) — Retrieval sémantique seul
-- [ ] Évaluer le système v1 avec le dataset généré
-- [ ] Commit sur GitHub
+- [X] Évaluer le système v1 avec le dataset généré
+
+---------------------------------------------------
+---------------------------------------------------
+OK évaluation v1 a fait monter un problème de doublons dans l'ingestion. Correction à effectuer!
+---------------------------------------------------
+---------------------------------------------------
 
 ### Version 2 — Amélioration du retrieval
 - [ ] Ajouter BM25 (recherche hybride sémantique + lexicale)
 - [ ] Ré-évaluer et comparer avec v1
-- [ ] Commit sur GitHub
 
 ### Évaluation — Évolution prévue
 Remplacement partiel de DeepEval pour limiter la consommation de quotas LLM :
@@ -126,3 +130,58 @@ python -m evaluation.run_eval --dataset generated_dataset_ratio_0.7.json
 ### Notes sur le biais d'évaluation
 
 **Self-enhancement bias** : un LLM tend à favoriser ses propres outputs quand il s'évalue lui-même. Solution retenue : Mistral génère les réponses, Gemini Flash juge.
+
+
+# Évaluation retrieval uniquement
+python -m evaluation.run_eval --retrieval
+
+# Évaluation génération uniquement
+python -m evaluation.run_eval --generation
+
+# Les deux
+python -m evaluation.run_eval
+
+
+
+## Stratégie d'évaluation : le dataset
+
+Le dataset génératif sert à deux niveaux distincts : valider l'évaluateur lui-même, puis avoir confiance dans les résultats obtenus.
+
+### Niveau 1 — Valider l'évaluateur
+
+Le dataset `generated_dataset_ratio_0.7.json` a été construit à partir du pipeline d'ingestion, sans annotation humaine. Le `ratio_0.7` signifie que 70% des questions ont leur `assigned_chunk_id` assigné de façon fiable.
+
+### Niveau 2 — Confiance dans les résultats
+
+Une fois vérifié que l'évaluateur se comporte correctement sur ce dataset connu, les scores obtenus reflètent fidèlement les performances réelles du retriever.
+
+
+# Rapport d'Évaluation de la Génération (V1)
+### Partie Retrieval:
+Le Retrieval est à améliorer.
+
+
+### Partie Génération:
+
+L'évaluation a été réalisée à l'aide du framework DeepEval. 
+Les données du dataset ont été générées par le modèle Mistral. Chaque (Question/Réponse/Contexte) à été soumis à une évalution via Gemini 2.5 Flash comme modèle de juge (LLM-as-a-judge). L'objectif était de mesurer la performance sur la Fidélité et la Pertinence des réponses.
+
+*Objectif*: Utiliser le modèle Gemini pour détecter si Mistral a halluciné ou s'il a été imprécis.
+
+*Résultat V1*: Avec des scores dépassant les 90%, le contenu généré par Mistral est plutôt fiable. 
+Cependant, dans ce dataset il y avait 3 questions pièges (non pertinentes):
+Mistral a échoué sur certains cas précis. Dans 1 des 3 questions pièges Mistral a déduit et inventé une réponse à partir du titre d'une figure alors qu'il n'y avait aucune information comme réponse attendue. 
+Dans une autre question pièg, il a halluciné car le contexte fourni pour cette question contenait que quelque ligne d'informations. Mistral a donc utilisé ses connaissances internes au lieu de se limiter au contexte. 
+
+Pourquoi Pass par DeepEval? 
+Hypothèses: Sûrement une mauvaise interprétation, le juge a du considéré que comme Mistral cite le nom de la figure "Figure 2" qui est dans le texte il est fidèle. 
+Et pour l'autre question l'answer relevancy est pass, surement parce que la réponse est pertinente même si fausse par rapport au corpus. 
+
+Correction: Durcir le prompt!
+
+-------------------------------------------------------------------
+Métrique            Score Moyen     Seuil (Threshold)       État
+-------------------------------------------------------------------
+Faithfulness        0.93            0.80                    Succès
+Answer Relevancy    0.90            0.75                    Succès
+-------------------------------------------------------------------

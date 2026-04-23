@@ -5,25 +5,25 @@ from typing import Any
 from deepeval import evaluate
 from deepeval.test_case import LLMTestCase
 
-from evaluation.metrics.retrieval_metrics import get_retrieval_metrics
 from evaluation.metrics.generation_metrics import get_generation_metrics
 from src.rag import generate_response
 
 
-class RAGEvaluator:
+class GenerationEvaluator:
     """
-    Evaluate a RAG system, from retrieval to generation, using DeepEval metrics.
-    The evaluation process includes:
-    1. For each question in the dataset, retrieve relevant chunks from the vector store.
-    2. Generate a response based on the retrieved chunks.
-    3. Evaluate the retrieval step with contextual metrics and the generation step with faithfulness and relevancy metrics.
-    4. Return a comprehensive report of the evaluation results."""
+    Évalue la génération du système RAG avec DeepEval + Gemini.
+    
+    Le processus d'évaluation :
+    1. Pour chaque question du dataset, récupérer les chunks pertinents du vector store.
+    2. Générer une réponse basée sur les chunks récupérés.
+    3. Évaluer la génération avec les métriques Faithfulness et Answer Relevancy.
+    4. Retourner un rapport des résultats.
+    """
     def __init__(self, vector_store: Any):
         """
         vector_store : PGVector instance avec RAG déjà indexé
         """
         self.vector_store = vector_store
-        self.retrieval_metrics = get_retrieval_metrics()
         self.generation_metrics = get_generation_metrics()
 
     def _build_test_case(self, item: dict) -> LLMTestCase:
@@ -56,7 +56,7 @@ class RAGEvaluator:
         """
         #Chargement du dataset
         if dataset_path is None:
-            dataset_path = Path(__file__).parent.parent / "dataset" / "dataset.json"
+            dataset_path = Path(__file__).parent.parent / "dataset" / "generated_dataset_ratio_0.7.json"
 
         with open(dataset_path, "r", encoding="utf-8") as f:
             dataset = json.load(f)
@@ -72,14 +72,8 @@ class RAGEvaluator:
             except Exception as e:
                 print(f"  ✗ Erreur sur {item['id']}: {e}")
 
-        all_metrics = self.retrieval_metrics + self.generation_metrics
+        all_metrics = self.generation_metrics
 
-        #modif pour pas exploser le quota gemini
-        #results = evaluate(test_cases, all_metrics)
-        results = evaluate(
-            test_cases, 
-            all_metrics, 
-            run_async=False,  # Désactive le parallélisme
-            throttle_value=10 # Attend 10 secondes entre chaque appel
-        )
+        # Évaluation classique avec DeepEval + Gemini
+        results = evaluate(test_cases, all_metrics)
         return results
