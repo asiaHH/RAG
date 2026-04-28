@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 import src.rag as rag
 from src.rag import generate_response
-from src.ingestion.loaders import ingest_pdf, ingest_txt, ingest_pptx, ingest_excel, ingest_csv, ingest_unstructured_files
+from src.ingestion.loaders import ingest_pdf, ingest_txt, ingest_pptx, ingest_excel, ingest_csv, ingest_docx
 import shutil
 from typing import List
 import logging
@@ -33,18 +33,6 @@ async def global_exception_handler(request: Request, exc: Exception):
     """
     logger.error("Error: %s\n%s", exc, traceback.format_exc())
     return JSONResponse(status_code=500, content={"detail": "Internal error of the server"})
-
-# @app.on_event("startup")
-# async def startup_event():
-#     """
-#     Event handler for application startup. Initializes the vector store and logs the status of the connection.
-#     """
-#     global vector_store
-#     vector_store = init_vector_store()
-#     if vector_store is not None:
-#         logger.info("PGVector connection successful")
-#     else:
-#         logger.error("PGVector connection failed")
 
 @app.get("/")
 def read_root():
@@ -86,6 +74,23 @@ async def sync_collection_endpoint(request: SyncRequest = None):
     except Exception as e:
         logger.error(f"Error during synchronization: {e}")
         traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@app.post("/clear-collection")
+async def clear_collection_endpoint():
+    """
+    Endpoint to completely clear the vector collection.
+    This removes all documents and embeddings from the vector store.
+    :return: A JSON response indicating the success or failure of the operation
+    """
+    try:
+        success = pipeline.clear_collection()
+        if success:
+            return {"status": "Collection vidée complètement avec succès"}
+        else:
+            raise HTTPException(status_code=500, detail="Erreur lors du vidage de la collection")
+    except Exception as e:
+        logger.error(f"Erreur lors du vidage de la collection: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     
 @app.post("/ask")
@@ -144,8 +149,8 @@ async def generate_response_endpoint(file_path: str, question: str):
         vector_store = ingest_excel(file_path)
     elif file_path.endswith(".csv"):
         vector_store = ingest_csv(file_path)
-    else:
-        vector_store = ingest_unstructured_files(file_path)
+    elif file_path.endswith(".docx"):
+        vector_store = ingest_docx(file_path)
     
     result = generate_response(vector_store, question)
     return result

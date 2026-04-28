@@ -1,12 +1,16 @@
 from src.db.catalog import DocumentCatalog
 from src.config import PSYCOPG2_CONNECTION_STRING
-from src.ingestion.loaders import ingest_pdf, ingest_txt, ingest_pptx, ingest_excel, ingest_csv, ingest_docx, ingest_unstructured_files
+from src.ingestion.loaders import ingest_pdf, ingest_txt, ingest_pptx, ingest_excel, ingest_csv, ingest_docx
 from src.ingestion import pipeline
+
+# extensions authorized for ingestion
+ALLOWED_EXTENSIONS = {'.txt', '.pptx', '.pdf', '.docx', '.xlsx', '.csv'}
 
 def sync_collection(directory: str = "data"):
     """
     Synchronize the vector store with the files in the specified directory. 
     It detects new, modified, and deleted files and updates the vector store accordingly.
+    Only txt, pptx, pdf, docx, xlsx and csv files are processed.
     :param directory: The directory to synchronize (default is "data")
     :return: Updated vector store
     """
@@ -18,6 +22,17 @@ def sync_collection(directory: str = "data"):
     current_files = catalog.scan_directory(directory)
     if not current_files:
         print("No files found in the directory.")
+        return pipeline.vector_store
+
+    # Filter to keep only allowed files
+    import os
+    current_files = [
+        f for f in current_files 
+        if os.path.splitext(f["file_path"])[1].lower() in ALLOWED_EXTENSIONS
+    ]
+    
+    if not current_files:
+        print("No allowed files found in the directory (only txt, pptx, pdf, docx, xlsx, csv are processed).")
         return pipeline.vector_store
 
     indexed_files = catalog.get_indexed_files()
@@ -68,8 +83,6 @@ def sync_collection(directory: str = "data"):
             ingest_csv(file_info["file_path"], source_id=file_info["source_id"])
         elif path.endswith(".docx"):
             ingest_docx(file_info["file_path"], source_id=file_info["source_id"])
-        else:
-            ingest_unstructured_files(file_info["file_path"], source_id=file_info["source_id"])
 
     print("Synchronization completed.")
     return pipeline.vector_store

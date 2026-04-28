@@ -60,6 +60,19 @@ with col2:
                 except Exception as e:
                     st.sidebar.error(f"Erreur lors de la synchronisation du répertoire: {e}")
 
+st.sidebar.markdown("---")
+if st.sidebar.button("🗑️ Vider Collection", type="secondary"):
+    with st.spinner("Vidage de la collection en cours..."):
+        try:
+            resp = requests.post("http://127.0.0.1:8000/clear-collection")
+            if resp.status_code == 200:
+                st.sidebar.success("Collection vidée complètement !")
+                st.session_state.uploaded_names = []
+            else:
+                st.sidebar.error(f"Erreur lors du vidage: {resp.status_code} - {resp.text}")
+        except Exception as e:
+            st.sidebar.error(f"Erreur lors du vidage de la collection: {e}")
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 

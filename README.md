@@ -30,6 +30,7 @@ Statut: IN PROGRESS...
 - Détection des nouveaux fichiers
 - Détection des modifications via hash 
 - Indexation uniquement des changements 
+- Vérification des doublons par requête SQL 
 - Formats supportés : PDF, DOCX, TXT, PPTX, XLSX, CSV
 
 ### Nettoyage des données
@@ -51,12 +52,10 @@ Principe : nettoyer le minimum nécessaire, chaque transformation supprime de l'
 
 ### Version actuelle (v1) — Retrieval sémantique seul
 - [X] Évaluer le système v1 avec le dataset généré
+- [X] Erreur retrouvé dans l'ingestion = doublons à corriger 
+- [ ] Ré-évaluer 
 
----------------------------------------------------
----------------------------------------------------
-OK évaluation v1 a fait monter un problème de doublons dans l'ingestion. Correction à effectuer!
----------------------------------------------------
----------------------------------------------------
+
 
 ### Version 2 — Amélioration du retrieval
 - [ ] Ajouter BM25 (recherche hybride sémantique + lexicale)
@@ -64,9 +63,9 @@ OK évaluation v1 a fait monter un problème de doublons dans l'ingestion. Corre
 
 ### Évaluation — Évolution prévue
 Remplacement partiel de DeepEval pour limiter la consommation de quotas LLM :
-- Calcul des métriques de retrieval en Python pur (pas de LLM)
-- DeepEval conservé uniquement pour la génération du dataset
-- Gemini Flash reste le LLM juge pour la partie génération
+- [X] Calcul des métriques de retrieval en Python pur (pas de LLM)
+- [X] DeepEval conservé uniquement pour la génération du dataset
+- [X] Gemini Flash reste le LLM juge pour la partie génération
 
 ---
 
@@ -185,3 +184,7 @@ Métrique            Score Moyen     Seuil (Threshold)       État
 Faithfulness        0.93            0.80                    Succès
 Answer Relevancy    0.90            0.75                    Succès
 -------------------------------------------------------------------
+
+
+
+
