@@ -91,15 +91,15 @@ PgAdmin : http://localhost:8080
 
 ---
 
-# Évaluation
+## Évaluation
 
-## Installation des dépendances
+### Installation des dépendances
 
 ```bash
 pip install -r evaluation/requirements-eval.txt
 ```
 
-## Configuration
+### Configuration
 
 Obtenir une clé API Google AI via [Google AI Studio](https://aistudio.google.com/) et l'ajouter au `.env` :
 
@@ -107,13 +107,13 @@ Obtenir une clé API Google AI via [Google AI Studio](https://aistudio.google.co
 GOOGLE_API_KEY="votre_clé_api_ici"
 ```
 
-## Générer un dataset
+### Générer un dataset
 
 ```bash
 python -m evaluation.dataset.generate_dataset --ratio 0.7 --n_questions 30
 ```
 
-## Lancer l'évaluation
+### Lancer l'évaluation
 
 ```bash
 python -m evaluation.run_eval
@@ -122,50 +122,43 @@ python -m evaluation.run_eval
 python -m evaluation.run_eval --dataset generated_dataset_ratio_0.7.json
 ```
 
-### Notes sur le biais d'évaluation
+#### Notes sur le biais d'évaluation
 
 **Self-enhancement bias** : un LLM tend à favoriser ses propres outputs quand il s'évalue lui-même. Solution retenue : Mistral génère les réponses, Gemini Pro juge.
 
 
-### Évaluation retrieval uniquement
-python -m evaluation.run_eval --retrieval
+#### Évaluation retrieval uniquement
+> python -m evaluation.run_eval --retrieval
 
-### Évaluation génération uniquement
-python -m evaluation.run_eval --generation
+#### Évaluation génération uniquement
+> python -m evaluation.run_eval --generation
 
-### Les deux
-python -m evaluation.run_eval
+#### Les deux
+> python -m evaluation.run_eval
 
 
-## Stratégie d'évaluation : le dataset
+### Stratégie d'évaluation : le dataset
 
 Le dataset génératif sert à deux niveaux distincts : valider l'évaluateur lui-même, puis avoir confiance dans les résultats obtenus.
 
-### Niveau 1 — Valider l'évaluateur
+#### Niveau 1 — Valider l'évaluateur
 
 Le dataset `generated_dataset_ratio_0.7.json` a été construit à partir du pipeline d'ingestion, sans annotation humaine. Le `ratio_0.7` signifie que 70% des questions ont leur `assigned_chunk_id` assigné de façon fiable.
 
-### Niveau 2 — Confiance dans les résultats
+#### Niveau 2 — Confiance dans les résultats
 
 Une fois vérifié que l'évaluateur se comporte correctement sur ce dataset connu, les scores obtenus reflètent fidèlement les performances réelles du retriever.
 
-# Rapport d'Évaluation de la Génération (V1)
+## Rapport d'Évaluation de la Génération (V1)
 
-## Partie Retrieval:
+### Partie Retrieval:
 
 Evalué seulement sur les questions pertinentes du dataset soit 21 questions au lieu de 30. 
 
-│    Métrique          │     Score    ┃   K    ┃  Queries   ┃
-┡━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━┩
-│ Precision@K          │    0.2000    │   5    │     21     │
-│ Recall@K             │    1.0000    │   5    │     21     │
-│ MRR                  │    0.8413    │   5    │     21     │
-│ Hit Rate@K           │    1.0000    │   5    │     21     │
-└──────────────────────┴──────────────┴────────┴─────────────
 
 Le retriever ne rate jamais le bon chunk dans les 5 résultats (Hit Rate 1.0), et il le met en première position ~87% du temps (MRR ~0.87). La Precision@K à 0.20 est une conséquence arithmétique du fait qu'on récupère 5 chunks pour 1 seul pertinent.
 
-## Partie Génération
+### Partie Génération
 
 Problème avec le modèle "gemini-2.5-flash" : erreur structure JSON: 
 >  Batch n échoué : Evaluation LLM outputted an invalid JSON. Please use a better evaluation model.
@@ -180,38 +173,33 @@ Les données du dataset ont été générées par le modèle Mistral. Chaque (Qu
 
 *Objectif*: Utiliser le modèle Gemini pour détecter si Mistral a halluciné ou s'il a été imprécis.
 
-## Analyse des résultats
+### Analyse des résultats
 
-### Résumé global (30 questions)
+#### Résumé global (30 questions)
 
--------------------------------------------------------------------
-Métrique            Score Moyen     Seuil (Threshold)       État
--------------------------------------------------------------------
-Faithfulness        0.933            0.80                    PASS
-Answer Relevancy    0.849            0.75                    PASS
--------------------------------------------------------------------
+
 
 L'affichage des résultats des scores pour chaque questions afin de savoir quels questions a échoué:
-//photos_1_a_jouter
+
 
 > Modèle d'évaluation : Gemini 2.5 Pro via DeepEval  
 > Dataset : 30 questions (pertinentes + hors-corpus)
 
 ---
 
-### Interprétation des métriques
+#### Interprétation des métriques
 
-#### Faithfulness (0.933)
+##### Faithfulness (0.933)
 
 Un score de 0.93 signifie que le RAG ne produit presque pas d'informations inventées ou déformées.
 
-#### Answer Relevancy (0.849)
+##### Answer Relevancy (0.849)
 
 Le score de 0.85 est bon, mais c'est ici que se concentrent les principaux points d'amélioration.
 
 ---
 
-### Ce qui fonctionne bien
+#### Ce qui fonctionne bien
 
 - **Fidélité au corpus élevée** : sur les questions dont la réponse est effectivement dans les documents, le modèle restitue correctement le contenu sans halluciner.
 - **Pertinence des réponses techniques** : les questions précises sur du contenu bien délimité (MATLAB, méthode `paint`, etc.) obtiennent des scores parfaits (1.0/1.0 sur les deux métriques).
@@ -219,9 +207,9 @@ Le score de 0.85 est bon, mais c'est ici que se concentrent les principaux point
 
 ---
 
-### Faiblesses identifiées et pistes de correction
+#### Faiblesses identifiées et pistes de correction
 
-#### 1. Questions hors-corpus — le RAG ne sait pas dire "je ne sais pas"
+##### 1. Questions hors-corpus — le RAG ne sait pas dire "je ne sais pas"
 
 Quand la question n'a pas de réponse dans les documents indexés, le modèle produit malgré tout une réponse longue en s'accrochant à des chunks vaguement liés.
 
@@ -241,7 +229,7 @@ Le retriever a remonté des chunks sur `f⁻¹` (image réciproque) et `fact()` 
 
 ---
 
-#### 2. Sur-interprétation sémantique — paraphrase infidèle
+##### 2. Sur-interprétation sémantique — paraphrase infidèle
 
 Le modèle reformule le contenu du chunk en changeant légèrement le sens, notamment sur des termes techniques précis.
 
@@ -263,7 +251,7 @@ Le modèle a inversé le sujet de la limitation spectrale et réinterprété "li
 
 ---
 
-#### 3. Réponses trop longues — dilution de la pertinence
+##### 3. Réponses trop longues — dilution de la pertinence
 
 Le modèle ajoute des informations exactes mais non demandées, ce qui dilue la réponse par rapport à la question.
 
