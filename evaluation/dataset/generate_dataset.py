@@ -137,14 +137,15 @@ def parse_llm_qa_json(prompt, llm_client):
     match = re.search(r'\{.*?\}', clean, re.DOTALL)
     if not match:
         raise ValueError(f"Aucun JSON trouvé : {clean[:200]}")
-    
-    json_str = match.group()
-    
+        
     # correct the invalid backslashes (LaTeX formulas, etc.)
-    json_str = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', json_str)
+    json_str = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', match.group())
     
-    data = json.loads(match.group())
-    return data["question"], data["answer"]
+    data = json.loads(json_str)
+
+    question=(data.get("question") or data.get("Question") or data.get("query"))
+    answer=(data.get("answer") or data.get("réponse") or data.get("expected_answer"))
+    return question, answer
 
 
 
@@ -300,7 +301,7 @@ def generate_dataset_with_ratio(ratio: float, n_questions: int = 20):
         use_round_trip=True,
     )
     
-    export_dataset(dataset, f"evaluation/dataset/generated_dataset_ratio_{ratio}.json")
+    export_dataset(dataset, f"evaluation/dataset/generated_dataset_V2_ratio_{ratio}.json")
     print(f"Dataset généré avec ratio {ratio} → evaluation/dataset/generated_dataset_ratio_{ratio}.json")
     return dataset
 

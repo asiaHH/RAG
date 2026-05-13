@@ -1,8 +1,8 @@
 import argparse
 import json
 import sys
-import time
 from pathlib import Path
+from src.rag import get_retriever
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -65,12 +65,7 @@ def run_retrieval_evaluation(vector_store, dataset, args):
     # Préparer les données pour le calcul batch
     queries_results = []
     
-    #### A LA PLACE utiliser le vrai retriever ICI 
-    ###########
-    #########
-    ########
-    #######
-    #retriever = vector_store.as_retriever(search_type="similarity", search_kwargs={"k": k})
+    retriever = get_retriever(vector_store, k=k)
     
     for i, item in enumerate(dataset):
         question = item["input"]
@@ -157,12 +152,8 @@ def run_generation_evaluation(vector_store, dataset, args):
     console.print(f"Dataset : {len(dataset)} questions\n")
     
     evaluator = GenerationEvaluator(vector_store=vector_store)
-    
-    # Deepeval throttle est déjà configuré dans generation_evaluator.py
-    results = evaluator.run(dataset_path=None)
-    
+    results = evaluator.run(dataset=dataset)
     print_results(results)
-    
     return results
 
 
@@ -196,7 +187,7 @@ def print_results(results):
 
     scores_by_category = {"Retrieval": [], "Génération": []}
 
-    for test_result in results.test_results:
+    for test_result in results["details"]:
         for metric_data in test_result.metrics_data:
             name = metric_data.name
             score = metric_data.score or 0.0
@@ -217,19 +208,6 @@ def print_results(results):
                 scores_by_category[category].append(score)
 
     console.print(table) 
-
-    console.print()
-    summary = Table(show_header=True, header_style="bold magenta")
-    summary.add_column("Catégorie", width=14)
-    summary.add_column("Score moyen", justify="center", width=14)
-
-    for category, scores in scores_by_category.items():
-        if scores:
-            avg = sum(scores) / len(scores)
-            color = "green" if avg >= 0.7 else "red"
-            summary.add_row(category, f"[{color}]{avg:.2f}[/{color}]")
-
-    console.print(Panel(summary, title="Résumé par catégorie", style="magenta"))
 
 def main():
     parser = argparse.ArgumentParser(
@@ -285,14 +263,21 @@ Exemples:
     # Charger le dataset
     dataset = load_dataset(args.dataset)
     console.print(f"Dataset chargé : {len(dataset)} questions\n")
+
+    #on separe les deux population une seule fois
+    dataset_pertinent = [item for item in dataset if item.get("is_relevant", True)]
+    dataset_mixte = dataset # on garde tout pour la generation
+
+    console.print(f"  -> {len(dataset_pertinent)} questions pertinentes (retrieval)")
+    console.print(f"  -> {len(dataset_mixte)} questions mixtes (génération)\n")
     
     # Évaluation retrieval
     if args.retrieval or run_both:
-        retrieval_report = run_retrieval_evaluation(vector_store, dataset, args)
+        retrieval_report = run_retrieval_evaluation(vector_store, dataset_pertinent, args)
     
     # Évaluation génération
     if args.generation or run_both:
-        generation_results = run_generation_evaluation(vector_store, dataset, args)
+        generation_results = run_generation_evaluation(vector_store, dataset_mixte, args)
     
     console.print("\n[bold green]✓ Évaluation terminée![/bold green]")
 

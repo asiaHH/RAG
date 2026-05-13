@@ -3,6 +3,14 @@ from langchain_classic.chains import create_retrieval_chain
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 from langchain_classic.prompts import ChatPromptTemplate
 
+def get_retriever(vector_store, k: int = 5):
+    """
+    Returns the retriever for the RAG, reusable for evaluation.
+    """
+    return vector_store.as_retriever(
+        search_type="similarity",
+        search_kwargs={"k": k}
+    )
 
 def generate_response(vector_store, question):
     """
@@ -15,7 +23,15 @@ def generate_response(vector_store, question):
         chat_model = ChatMistralAI(model="open-mistral-7b", temperature=0.7)
 
         prompt=ChatPromptTemplate.from_template("""
-            Tu es un assistant qui répond uniquement à partir du contexte fourni. Si tu ne connais pas la réponse, dit que tu ne sais pas.
+            Tu es un assistant qui répond uniquement à partir des documents fournis.
+            Si la réponse à la question n'est pas présente dans les documents,
+            réponds UNIQUEMENT : "Cette information n'est pas disponible dans le corpus."
+            Ne génère aucune réponse à partir de tes connaissances générales.
+            Ne réinterprète pas les termes techniques.
+            Si le contexte dit "A est limité à X", ne transforme pas en "B est limité à X".
+            Réponds de façon précise et concise à ce qui est demandé.
+            N'inclus pas d'informations supplémentaires même si elles sont présentes
+            dans le contexte, sauf si la question les demande explicitement.
             
             Contexte: {context}
             Question: {input}
@@ -27,14 +43,12 @@ def generate_response(vector_store, question):
         )
         
         retrieval_chain = create_retrieval_chain(
-            retriever=vector_store.as_retriever(search_type="similarity", search_kwargs={"k": 5}),
+            retriever=get_retriever(vector_store),
             combine_docs_chain=document_chain
         )
 
         result = retrieval_chain.invoke({"input": question})
-        answer = result["answer"]
-        sources = result.get("context", []) 
-        return {"answer": answer, "sources": sources}
+        return {"answer": result["answer"], "sources": result.get("context", [])}
     
     except Exception as e:
         print(f"Error in generate_response: {e}")
