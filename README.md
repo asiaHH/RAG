@@ -154,6 +154,7 @@ Une fois vérifié que l'évaluateur se comporte correctement sur ce dataset con
 ### Partie Retrieval:
 
 Evalué seulement sur les questions pertinentes du dataset soit 21 questions au lieu de 30. 
+<img width="524" height="179" alt="Photos_2" src="https://github.com/user-attachments/assets/891dc824-41fe-4aa1-a5f3-905f895a5e95" />
 
 
 Le retriever ne rate jamais le bon chunk dans les 5 résultats (Hit Rate 1.0), et il le met en première position ~87% du temps (MRR ~0.87). La Precision@K à 0.20 est une conséquence arithmétique du fait qu'on récupère 5 chunks pour 1 seul pertinent.
@@ -177,10 +178,10 @@ Les données du dataset ont été générées par le modèle Mistral. Chaque (Qu
 
 #### Résumé global (30 questions)
 
-
+<img width="446" height="84" alt="photos_3" src="https://github.com/user-attachments/assets/31537117-a865-4c3c-a7dc-fb3331fa287f" />
 
 L'affichage des résultats des scores pour chaque questions afin de savoir quels questions a échoué:
-
+<img width="497" height="527" alt="photos_1" src="https://github.com/user-attachments/assets/9bc44b9e-61e8-46a1-a687-a71c7215e212" />
 
 > Modèle d'évaluation : Gemini 2.5 Pro via DeepEval  
 > Dataset : 30 questions (pertinentes + hors-corpus)
