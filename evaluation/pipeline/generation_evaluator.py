@@ -37,31 +37,11 @@ class GenerationEvaluator:
         3. Emballe tout dans un LLMTestCase DeepEval
         """
         question = item["input"]
-
-        # retriever = self.vector_store.as_retriever(search_type="similarity", search_kwargs={"k": 5})
-        # retrieved_docs = retriever.invoke(question)
-        # retrieval_context = [doc.page_content for doc in retrieved_docs]
-
-        # response = generate_response(self.vector_store, question)
-        # actual_output = response.get("answer", "")
-
-        # return LLMTestCase(
-        #     input=question,
-        #     actual_output=actual_output,
-        #     expected_output=item.get("expected_output", ""),
-        #     retrieval_context=retrieval_context,
-        #     context=retrieval_context,
-        # )
         is_relevant = item.get("is_relevant", True)
-
-        retriever = self.vector_store.as_retriever(
-            search_type="similarity", search_kwargs={"k": 5}
-        )
-        retrieved_docs = retriever.invoke(question)
-        retrieval_context = [doc.page_content for doc in retrieved_docs]
 
         response = generate_response(self.vector_store, question)
         actual_output = response.get("answer", "")
+        retrieval_context = [doc.page_content for doc in response.get("sources", [])]    
 
         # Pour les questions négatives, l'expected_output est "je ne sais pas"
         # Pour les positives, on garde la réponse du dataset

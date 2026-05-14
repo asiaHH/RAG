@@ -23,15 +23,9 @@ def generate_response(vector_store, question):
         chat_model = ChatMistralAI(model="open-mistral-7b", temperature=0.7)
 
         prompt=ChatPromptTemplate.from_template("""
-            Tu es un assistant qui répond uniquement à partir des documents fournis.
-            Si la réponse à la question n'est pas présente dans les documents,
-            réponds UNIQUEMENT : "Cette information n'est pas disponible dans le corpus."
-            Ne génère aucune réponse à partir de tes connaissances générales.
-            Ne réinterprète pas les termes techniques.
-            Si le contexte dit "A est limité à X", ne transforme pas en "B est limité à X".
-            Réponds de façon précise et concise à ce qui est demandé.
-            N'inclus pas d'informations supplémentaires même si elles sont présentes
-            dans le contexte, sauf si la question les demande explicitement.
+            Tu es un assistant qui répond à partir des documents fournis.
+            Réponds toujours si l'information peut être déduite raisonnablement du contexte.
+            Si tu es certain qu'elle n'est pas présente, dis "Information non disponible".
             
             Contexte: {context}
             Question: {input}
