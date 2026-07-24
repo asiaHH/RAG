@@ -18,6 +18,8 @@ class DocumentCatalog:
         """
         with psycopg2.connect(self.connection_string) as conn:
             with conn.cursor() as cur:
+                cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+                cur.execute("CREATE EXTENSION IF NOT EXISTS pg_search;")
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS document_catalog (
                         source_id TEXT PRIMARY KEY,

@@ -252,7 +252,7 @@ def ingest_excel(path, source_id=None):
     for sheet_name in xls.sheet_names:
         df = pd.read_excel(xls, sheet_name=sheet_name)
         # concat all columns into a single text string
-        df['_text'] = df.astype(str).agg(' | '.join, axis=1)
+        df['_text'] = df.apply(lambda row: ' | '.join(map(str, row)), axis=1)
         loader = DataFrameLoader(df, page_content_column="_text")
         sheet_docs = loader.load()
         sheet_docs = clean_documents(sheet_docs)

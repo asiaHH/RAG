@@ -1,3 +1,5 @@
+import os
+import psycopg2
 from src.db.catalog import DocumentCatalog
 from src.config import PSYCOPG2_CONNECTION_STRING
 from src.ingestion.loaders import ingest_pdf, ingest_txt, ingest_pptx, ingest_excel, ingest_csv, ingest_docx
@@ -5,6 +7,18 @@ from src.ingestion import pipeline
 
 # extensions authorized for ingestion
 ALLOWED_EXTENSIONS = {'.txt', '.pptx', '.pdf', '.docx', '.xlsx', '.csv'}
+
+def ensure_bm25_index():
+    with psycopg2.connect(PSYCOPG2_CONNECTION_STRING) as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS langchain_pg_embedding_bm25_idx
+                ON langchain_pg_embedding
+                USING bm25 (uuid, document)
+                WITH (key_field='uuid');
+            """)
+            conn.commit()
+    print("Index BM25 vérifié/créé.")
 
 def sync_collection(directory: str = "data"):
     """
@@ -18,6 +32,11 @@ def sync_collection(directory: str = "data"):
     print(f"SYNCHRONIZATION of the directory {directory}...")
 
     catalog = DocumentCatalog(PSYCOPG2_CONNECTION_STRING)
+
+    if pipeline.vector_store is None:
+        pipeline.init_vector_store()
+
+    ensure_bm25_index()
 
     current_files = catalog.scan_directory(directory)
     if not current_files:

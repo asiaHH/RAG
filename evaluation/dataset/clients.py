@@ -9,7 +9,7 @@ class RealLLMClient:
         self.llm = ChatMistralAI(
             model="open-mistral-7b",  # Same model as generate_response()
             api_key=os.getenv("MISTRAL_API_KEY"),
-            temperature=0.7,  # Same temperature
+            temperature=0.2,  # Same temperature
         )
 
     def generate(self, prompt: str) -> str:

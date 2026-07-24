@@ -20,12 +20,13 @@ def generate_response(vector_store, question):
     :return: A dictionary containing the answer and the sources used
     """
     try:
-        chat_model = ChatMistralAI(model="open-mistral-7b", temperature=0.7)
+        chat_model = ChatMistralAI(model="open-mistral-7b", temperature=0.2)
 
         prompt=ChatPromptTemplate.from_template("""
-            Tu es un assistant qui répond à partir des documents fournis.
-            Réponds toujours si l'information peut être déduite raisonnablement du contexte.
-            Si tu es certain qu'elle n'est pas présente, dis "Information non disponible".
+            Tu es un assistant qui répond uniquement à partir des documents fournis.
+            Si le contexte ne contient pas d'information directement pertinente à la question,
+            réponds strictement "Information non disponible dans le corpus."
+            N'essaie pas de relier des informations tangentiellement liées.
             
             Contexte: {context}
             Question: {input}

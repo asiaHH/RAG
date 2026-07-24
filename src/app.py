@@ -23,7 +23,7 @@ directory_path = st.sidebar.text_input(
     "Chemin du répertoire :",
     value="data",
     placeholder="/Users/...",
-    help="Copie le chemin depuis Finder (Clic droit > Copier comme nom de chemin)"
+    help="Copie le chemin depuis Finder (Clic droit > Copier comme nom de chemin). Sur Windows: C:\ → /mnt/c/ et les antislashs deviennent des slashs"
 )
 
 col1, col2 = st.sidebar.columns(2)
@@ -61,7 +61,7 @@ with col2:
                     st.sidebar.error(f"Erreur lors de la synchronisation du répertoire: {e}")
 
 st.sidebar.markdown("---")
-if st.sidebar.button("🗑️ Vider Collection", type="secondary"):
+if st.sidebar.button(" Vider Collection", type="secondary"):
     with st.spinner("Vidage de la collection en cours..."):
         try:
             resp = requests.post("http://127.0.0.1:8000/clear-collection")

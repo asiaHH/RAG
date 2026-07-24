@@ -74,6 +74,7 @@ pip install -r requirements.txt
 streamlit run src/app.py
 ```
 
+
 ## Lancer l'application
 
 ```bash
@@ -83,6 +84,7 @@ source venv/bin/activate
 # Lancer l'API
 uvicorn src.api:app --host 0.0.0.0 --port 8000 --reload
 
+pip install streamlit
 # Lancer l'interface
 streamlit run src/app.py
 ```
@@ -271,6 +273,13 @@ Le chunk sur le travail en équipe était adjacent dans le document au chunk de 
 **Correction** — Améliorer le prompt.
 
 
+
+Nouvelles modifications pour la V2: 
+1/ ajout d'un historique sur Streamlit
+2/ faire un panel de test humain avec la V1
+3/ optimiser RAG avec recherche hybride
+4/ refaire panel de test avec les mm questions et comparer 
+5/ re - evaluer et comparer 
 
 
 
