@@ -71,3 +71,4 @@ zstandard==0.25.0
 pandas==3.0.5
 python-multipart
 openpyxl==3.1.5
+rich==15.0.0

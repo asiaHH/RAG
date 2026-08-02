@@ -2,6 +2,11 @@ from langchain_mistralai import MistralAIEmbeddings, ChatMistralAI
 from langchain_classic.chains import create_retrieval_chain
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 from langchain_classic.prompts import ChatPromptTemplate
+from langchain_classic.retrievers import EnsembleRetriever
+import psycopg2
+from langchain_core.retrievers import BaseRetriever
+from langchain_core.documents import Document
+from src.config import PSYCOPG2_CONNECTION_STRING
 
 def get_retriever(vector_store, k: int = 5):
     """
@@ -10,6 +15,48 @@ def get_retriever(vector_store, k: int = 5):
     return vector_store.as_retriever(
         search_type="similarity",
         search_kwargs={"k": k}
+    )
+
+
+class PostgresBM25Retriever(BaseRetriever):
+    """
+    Ask directly the BM25 index (pg_search) created on langchain_pg_embedding.
+    No corpus in memory: the lexical search is done on the Postgres side.
+    """
+    k: int = 5
+
+    def _get_relevant_documents(self, query: str, *, run_manager=None) -> list[Document]:
+        with psycopg2.connect(PSYCOPG2_CONNECTION_STRING) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT document, cmetadata, paradedb.score(uuid) AS score
+                    FROM langchain_pg_embedding
+                    WHERE document @@@ %s
+                    ORDER BY score DESC
+                    LIMIT %s;
+                    """,
+                    (query, self.k)
+                )
+                rows = cur.fetchall()
+
+        return [
+            Document(page_content=row[0], metadata=row[1] or {})
+            for row in rows
+        ]
+
+
+def get_hybrid_retriever(vector_store, k: int = 5):
+    """
+    Hybrid retriever : BM25 (pg_search, in database) + vector similarity (pgvector),
+    merged by RRF via EnsembleRetriever.
+    """
+    semantic_retriever = get_retriever(vector_store, k=k)
+    bm25_retriever = PostgresBM25Retriever(k=k)
+
+    return EnsembleRetriever(
+        retrievers=[bm25_retriever, semantic_retriever],
+        weights=[0.2, 0.8],  # à ajuster selon l'éval
     )
 
 def generate_response(vector_store, question):
@@ -23,10 +70,9 @@ def generate_response(vector_store, question):
         chat_model = ChatMistralAI(model="open-mistral-7b", temperature=0.2)
 
         prompt=ChatPromptTemplate.from_template("""
-            Tu es un assistant qui répond uniquement à partir des documents fournis.
-            Si le contexte ne contient pas d'information directement pertinente à la question,
-            réponds strictement "Information non disponible dans le corpus."
-            N'essaie pas de relier des informations tangentiellement liées.
+        Tu es un assistant qui répond à partir des documents fournis.
+        Réponds toujours si l'information peut être déduite raisonnablement du contexte.
+        Si tu es certain qu'elle n'est pas présente, dis "Information non disponible".
             
             Contexte: {context}
             Question: {input}
@@ -38,7 +84,7 @@ def generate_response(vector_store, question):
         )
         
         retrieval_chain = create_retrieval_chain(
-            retriever=get_retriever(vector_store),
+             retriever=get_hybrid_retriever(vector_store),
             combine_docs_chain=document_chain
         )
 

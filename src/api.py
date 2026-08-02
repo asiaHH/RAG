@@ -3,7 +3,6 @@ import traceback
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from pydantic import BaseModel
 from dotenv import load_dotenv
-import src.rag as rag
 from src.rag import generate_response
 from src.ingestion.loaders import ingest_pdf, ingest_txt, ingest_pptx, ingest_excel, ingest_csv, ingest_docx
 import shutil
