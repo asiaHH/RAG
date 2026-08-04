@@ -171,6 +171,11 @@ L'évaluation de la génération (DeepEval + Gemini) est réalisée sur un écha
 
 Note méthodologique : le dataset applique un filtre round-trip à la génération, ce qui rend les scores absolus de Recall et Hit Rate optimistes par construction (ils confirment surtout la cohérence entre ce filtre et le retriever testé). Ces métriques sont donc utilisées ici en comparaison relative entre configurations de retrieval (sémantique vs hybride) plutôt que comme mesure absolue de performance. Le MRR, moins sujet à l'effet de plafond sur ce dataset, est la métrique la plus discriminante pour cette comparaison.
 
+<img width="450" height="257" alt="Capture d&#39;écran 2026-08-04 230715" src="https://github.com/user-attachments/assets/a5de6288-ebcb-4a04-a52c-9f67f5baa831" />
+
+<img width="626" height="258" alt="Capture d&#39;écran 2026-08-04 231625" src="https://github.com/user-attachments/assets/f31bb63a-478f-48ec-8726-a6e3d6f360ea" />
+
+
 ### Partie Génération
 
 Modèle "gemini-2.5-pro"
