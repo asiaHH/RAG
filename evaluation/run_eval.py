@@ -35,7 +35,13 @@ def load_dataset(dataset_path: str | None = None):
         dataset_path = Path(__file__).parent / "dataset" / "generated_dataset_ratio_0.7.json"
     else:
         dataset_path = Path(dataset_path)
-    
+        if not dataset_path.exists():
+            dataset_path = Path(__file__).parent / "dataset" / dataset_path
+
+    if not dataset_path.exists():
+        console.print(f"[red]Erreur : fichier dataset introuvable : {dataset_path}[/red]")
+        sys.exit(1)
+
     with open(dataset_path, "r", encoding="utf-8") as f:
         return json.load(f)
 

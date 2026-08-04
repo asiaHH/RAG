@@ -59,11 +59,12 @@ def get_hybrid_retriever(vector_store, k: int = 5):
         weights=[0.2, 0.8],  # à ajuster selon l'éval
     )
 
-def generate_response(vector_store, question):
+def generate_response(vector_store, question, retriever=None):
     """
     Generate a response to a question using the vector store and a language model.
     :param vector_store: The vector store containing the indexed documents
     :param question: The question to be answered
+    :param retriever: The retriever to use (optional)
     :return: A dictionary containing the answer and the sources used
     """
     try:
@@ -82,9 +83,12 @@ def generate_response(vector_store, question):
             llm=chat_model,
             prompt=prompt
         )
+
+        active_retriever = retriever if retriever is not None else get_hybrid_retriever(vector_store)
+
         
         retrieval_chain = create_retrieval_chain(
-             retriever=get_hybrid_retriever(vector_store),
+             retriever=active_retriever,
             combine_docs_chain=document_chain
         )
 

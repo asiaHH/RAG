@@ -164,9 +164,12 @@ Chaque type de question évalue un étage différent du pipeline, avec des métr
 
 **Pourquoi ne pas tout évaluer ensemble ?** Les métriques de retrieval supposent l'existence d'un document pertinent à retrouver, elles n'ont pas de sens sur une question conçue pour n'avoir aucune réponse dans le corpus. De même, Faithfulness et Answer Relevancy sont conçues pour juger la qualité d'une réponse factuelle, pas la pertinence d'un refus de répondre.
 
+L'évaluation de la génération (DeepEval + Gemini) est réalisée sur un échantillon de 20 questions pertinentes (tirage aléatoire), plutôt que sur l'ensemble du dataset, en raison du coût en appels API du LLM-judge. L'évaluation du retrieval, gratuite et déterministe, est réalisée sur l'ensemble des questions pertinentes.
 
-### Partie Retrieval:
 
+### Résultats — Retrieval (recherche sémantique)
+
+Note méthodologique : le dataset applique un filtre round-trip à la génération, ce qui rend les scores absolus de Recall et Hit Rate optimistes par construction (ils confirment surtout la cohérence entre ce filtre et le retriever testé). Ces métriques sont donc utilisées ici en comparaison relative entre configurations de retrieval (sémantique vs hybride) plutôt que comme mesure absolue de performance. Le MRR, moins sujet à l'effet de plafond sur ce dataset, est la métrique la plus discriminante pour cette comparaison.
 
 ### Partie Génération
 
@@ -204,6 +207,9 @@ Le score de ... est ....
 #### Faiblesses identifiées et pistes de correction
 
 A relancer apres modif
+
+
+
 
 
 

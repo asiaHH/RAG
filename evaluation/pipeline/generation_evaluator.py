@@ -9,7 +9,7 @@ from deepeval.evaluate import AsyncConfig
 from deepeval.test_case import LLMTestCase
 
 from evaluation.metrics.generation_metrics import get_generation_metrics
-from src.rag import generate_response
+from src.rag import generate_response, get_retriever
 
 
 class GenerationEvaluator:
@@ -39,12 +39,11 @@ class GenerationEvaluator:
         question = item["input"]
         is_relevant = item.get("is_relevant", True)
 
-        response = generate_response(self.vector_store, question)
+        response = generate_response(self.vector_store, question, retriever=get_retriever(self.vector_store))
         actual_output = response.get("answer", "")
         retrieval_context = [doc.page_content for doc in response.get("sources", [])]    
 
-        # Pour les questions négatives, l'expected_output est "je ne sais pas"
-        # Pour les positives, on garde la réponse du dataset
+   
         if is_relevant:
             expected_output = item.get("expected_output", "")
         else:
