@@ -1,11 +1,16 @@
 import json
 import random
 import re
+import time
+import os
 from dataclasses import asdict
+from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_not_exception_type
 from evaluation.dataset.models import Chunk, QAPair, QuestionType, GOOD_DIMENSIONS, BAD_DIMENSIONS, DEFAULT_POSITIVE_RATIO, DEFAULT_N_QUESTIONS, DEFAULT_TOP_K_RETRIEVAL
 from evaluation.dataset.clients import RealLLMClient, RealRetriever
 from src.ingestion.loaders import clean_text
 
+SLEEP_BETWEEN_CALLS = 1.0 #60 rpm default
+CHECKPOINT_EVERY = 25  # save each N couples generated
 
 def get_negative_chunk(chunks, chunk_i, chunk_split_ratios=(0.33, 0.66)):
     """
@@ -48,6 +53,7 @@ def pick_negative_chunk(chunks, chunk_i):
     candidates = get_negative_chunk(chunks, chunk_i)
     return random.choice(candidates) if candidates else None
 
+@retry(wait=wait_exponential(multiplier=2, max=60), stop=stop_after_attempt(6))
 def round_trip_check(question, chunk_i, retriever, top_k=5):
     """
     Do a round-trip retrieval to check if the generated question can be retrieved from the source chunk.
@@ -117,6 +123,7 @@ def sample_dimensions(dim_config):
     """
     return {dim: random.choice(values) for dim, values in dim_config.items()}
 
+@retry(wait=wait_exponential(multiplier=2, max=60), stop=stop_after_attempt(6),retry=retry_if_not_exception_type(ValueError))
 def parse_llm_qa_json(prompt, llm_client):
     """
     Send the prompt to the LLM and parse the JSON response to extract the question and answer.
@@ -148,8 +155,54 @@ def parse_llm_qa_json(prompt, llm_client):
     return question, answer
 
 
+def export_dataset(dataset, output_path):
+    """
+    Export the generated dataset to a JSON file, with a specific format.
+    Args:
+        dataset: list of QAPair objects to export
+        output_path: path to the output JSON file
+    """
+    serialized = []
+    for i, pair in enumerate(dataset, 1):
+        item = asdict(pair)
+        item['id'] = f"q{i}" 
+        item['input'] = item.pop('question')
+        item['expected_output'] = item.pop('answer')
+        serialized.append(item)
+ 
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(serialized, f, ensure_ascii=False, indent=2)
+    print(f"Dataset exporté → {output_path} ({len(dataset)} entrées)")
+ 
+ 
+def load_checkpoint(checkpoint_path):
+    """
+    Reload a partial dataset from a checkpoint JSON file (same format as export_dataset).
+    Args:
+        checkpoint_path: path to the checkpoint JSON file
+    Returns:
+        list: list of QAPair objects rebuilt from the checkpoint, or [] if no checkpoint found
+    """
+    if not checkpoint_path or not os.path.exists(checkpoint_path):
+        return []
+    with open(checkpoint_path, "r", encoding="utf-8") as f:
+        raw = json.load(f)
+    dataset = []
+    for item in raw:
+        dataset.append(QAPair(
+            question=item["input"],
+            answer=item["expected_output"],
+            source_chunk_id=item["source_chunk_id"],
+            is_relevant=item["is_relevant"],
+            assigned_chunk_id=item["assigned_chunk_id"],
+            question_type=item["question_type"],
+            dimensions=item["dimensions"],
+            round_trip_passed=item.get("round_trip_passed"),
+        ))
+    return dataset
 
-def generate_rag_dataset(chunks, llm_client, retriever=None, n_questions=DEFAULT_N_QUESTIONS, positive_ratio=DEFAULT_POSITIVE_RATIO, question_types=None, good_dimensions=None, bad_dimensions=None, use_round_trip=True, top_k=DEFAULT_TOP_K_RETRIEVAL, max_retries=3):
+
+def generate_rag_dataset(chunks, llm_client, retriever=None, n_questions=DEFAULT_N_QUESTIONS, positive_ratio=DEFAULT_POSITIVE_RATIO, question_types=None, good_dimensions=None, bad_dimensions=None, use_round_trip=True, top_k=DEFAULT_TOP_K_RETRIEVAL, max_retries=3, checkpoint_path=None):
     """
     Generate a dataset of question-answer pairs for RAG evaluation, with a specified ratio of positive (relevant) and negative (non-relevant) questions.
     Args:
@@ -164,6 +217,7 @@ def generate_rag_dataset(chunks, llm_client, retriever=None, n_questions=DEFAULT
         use_round_trip: whether to perform a round-trip retrieval check for positive questions
         top_k: number of chunks to retrieve for the round-trip check
         max_retries: number of attempts to generate a valid question-answer pair before giving up on a chunk
+        checkpoint_path:if set, saves progress every CHECKPOINT_EVERY items and resumes from it if it already exists
     Returns:
         list: a list of QAPair objects representing the generated dataset
     """
@@ -174,11 +228,14 @@ def generate_rag_dataset(chunks, llm_client, retriever=None, n_questions=DEFAULT
     if bad_dimensions is None:
         bad_dimensions = BAD_DIMENSIONS
     
+    dataset = load_checkpoint(checkpoint_path)
+    generated_positive = sum(1 for pair in dataset if pair.is_relevant)
+    generated_negative = len(dataset) - generated_positive
+    if dataset:
+        print(f"Reprise depuis le checkpoint : {len(dataset)} questions déjà générées ({generated_positive} positives, {generated_negative} négatives).")
+
     n_positive = int(n_questions * positive_ratio)
     n_negative = n_questions - n_positive
-    dataset = []
-    generated_positive = 0
-    generated_negative = 0
     
     print(f"Génération de {n_positive} questions positives et {n_negative} questions négatives...")
     
@@ -204,6 +261,7 @@ def generate_rag_dataset(chunks, llm_client, retriever=None, n_questions=DEFAULT
         for attempt in range(max_retries):
             try:
                 question, answer = parse_llm_qa_json(prompt, llm_client)
+                time.sleep(SLEEP_BETWEEN_CALLS)
                 break
             except ValueError as e:
                 print(f"  [Tentative {attempt + 1}/{max_retries}] Erreur génération : {e}")
@@ -220,6 +278,7 @@ def generate_rag_dataset(chunks, llm_client, retriever=None, n_questions=DEFAULT
         if use_round_trip and retriever is not None:
             if is_positive and q_type != QuestionType.UNANSWERABLE:
                 rtp = round_trip_check(question, source_chunk.id, retriever, top_k)
+                time.sleep(SLEEP_BETWEEN_CALLS)
                 if not rtp:
                     print(f"  Round-trip FAILED pour chunk {source_chunk.id} — question filtrée.")
                     continue
@@ -244,29 +303,17 @@ def generate_rag_dataset(chunks, llm_client, retriever=None, n_questions=DEFAULT
         total = generated_positive + generated_negative
         if total % 10 == 0:
             print(f"  Progression : {total}/{n_questions} questions générées")
+
+        if checkpoint_path and total % CHECKPOINT_EVERY == 0:
+            export_dataset(dataset, checkpoint_path)
     
     print(f"\nDataset généré : {generated_positive} positives, {generated_negative} négatives.")
+
+    #clear the checkpoint file after successful generation
+    if checkpoint_path and os.path.exists(checkpoint_path):
+        os.remove(checkpoint_path)
+
     return dataset
-
-def export_dataset(dataset, output_path):
-    """
-    Export the generated dataset to a JSON file, with a specific format.
-    Args:
-        dataset: list of QAPair objects to export
-        output_path: path to the output JSON file
-    """
-    serialized = []
-    for i, pair in enumerate(dataset, 1):
-        item = asdict(pair)
-        item['id'] = f"q{i}" 
-        item['input'] = item.pop('question')
-        item['expected_output'] = item.pop('answer')
-        serialized.append(item)
-
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(serialized, f, ensure_ascii=False, indent=2)
-    print(f"Dataset exporté → {output_path} ({len(dataset)} entrées)")
-
 
 
 def generate_dataset_with_ratio(ratio: float, n_questions: int = 20):
@@ -299,10 +346,11 @@ def generate_dataset_with_ratio(ratio: float, n_questions: int = 20):
         n_questions=n_questions,
         positive_ratio=ratio,
         use_round_trip=True,
+        checkpoint_path=f"evaluation/dataset/checkpoint_dataset_ratio_{ratio}.json"
     )
     
-    export_dataset(dataset, f"evaluation/dataset/generated_dataset_V2_ratio_{ratio}.json")
-    print(f"Dataset généré avec ratio {ratio} → evaluation/dataset/generated_dataset_ratio_{ratio}.json")
+    export_dataset(dataset, f"evaluation/dataset/generated_dataset_V3_ratio_{ratio}.json")
+    print(f"Dataset généré avec ratio {ratio} → evaluation/dataset/generated_dataset_V3_ratio_{ratio}.json")
     return dataset
 
 if __name__ == "__main__":
