@@ -2,7 +2,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from src.rag import get_retriever
+from src.rag import get_retriever, get_hybrid_retriever
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -71,7 +71,7 @@ def run_retrieval_evaluation(vector_store, dataset, args):
     # Préparer les données pour le calcul batch
     queries_results = []
     
-    retriever = get_retriever(vector_store, k=k)
+    retriever = get_hybrid_retriever(vector_store, k=k) if args.hybrid else get_retriever(vector_store, k=k)
     
     for i, item in enumerate(dataset):
         question = item["input"]
@@ -245,6 +245,7 @@ Exemples:
     # Type d'évaluation
     parser.add_argument("--retrieval", action="store_true", help="Évaluer le retrieval (métriques Python pures)")
     parser.add_argument("--generation", action="store_true", help="Évaluer la génération (Deepeval + Gemini)")
+    parser.add_argument("--hybrid", action="store_true", help="Utiliser le retriever hybride (BM25 + sémantique) au lieu du sémantique seul")
     
     # Paramètres retrieval
     parser.add_argument("--k", type=int, default=5, help="Nombre de chunks à récupérer (défaut: 5)")

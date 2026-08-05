@@ -4,6 +4,7 @@ from langchain_classic.chains.combine_documents import create_stuff_documents_ch
 from langchain_classic.prompts import ChatPromptTemplate
 from langchain_classic.retrievers import EnsembleRetriever
 import psycopg2
+import re
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.documents import Document
 from src.config import PSYCOPG2_CONNECTION_STRING
@@ -25,7 +26,19 @@ class PostgresBM25Retriever(BaseRetriever):
     """
     k: int = 5
 
+    @staticmethod
+    def _sanitize_query(query: str) -> str:
+        # Some retrievers may wrap the query in a field-specifier like "document:(...)",
+        # and PostgreSQL's BM25 parser rejects punctuation-heavy strings.
+        if isinstance(query, str) and query.lower().startswith("document:"):
+            query = query.split(":", 1)[1]
+
+        query = re.sub(r"[^0-9A-Za-zÀ-ÖØ-öø-ÿœŒæÆ\s]+", " ", query)
+        return " ".join(query.split())
+
     def _get_relevant_documents(self, query: str, *, run_manager=None) -> list[Document]:
+        sanitized_query = self._sanitize_query(query)
+
         with psycopg2.connect(PSYCOPG2_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -36,7 +49,7 @@ class PostgresBM25Retriever(BaseRetriever):
                     ORDER BY score DESC
                     LIMIT %s;
                     """,
-                    (query, self.k)
+                    (sanitized_query, self.k)
                 )
                 rows = cur.fetchall()
 
