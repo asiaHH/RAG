@@ -175,10 +175,12 @@ Note méthodologique : le dataset applique un filtre round-trip à la générati
 
 <img width="626" height="258" alt="Capture d&#39;écran 2026-08-04 231625" src="https://github.com/user-attachments/assets/f31bb63a-478f-48ec-8726-a6e3d6f360ea" />
 
-### Résultats — Retrieval (recherche sémantique)
+### Résultats — Retrieval (recherche hybride)
 
+<img width="615" height="257" alt="Capture d&#39;écran 2026-08-05 040453" src="https://github.com/user-attachments/assets/81280714-090f-40fd-a25c-b7d7851693c4" />
 
 Sur ce dataset, l'hybride n'apporte pas d'amélioration mesurable, probablement parce que les questions générées sont sémantiquement proches de leur source. La comparaison se fera sur une évaluation humaine dans streamlit. 
+
 ### Partie Génération
 
 Modèle "gemini-2.5-pro"
