@@ -69,7 +69,7 @@ def get_hybrid_retriever(vector_store, k: int = 5):
 
     return EnsembleRetriever(
         retrievers=[bm25_retriever, semantic_retriever],
-        weights=[0.2, 0.8],  # à ajuster selon l'éval
+        weights=[0.0, 1.0],  # à ajuster selon l'éval
     )
 
 def generate_response(vector_store, question, retriever=None):

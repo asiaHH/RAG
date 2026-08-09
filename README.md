@@ -169,8 +169,6 @@ L'évaluation de la génération (DeepEval + Gemini) est réalisée sur un écha
 
 ### Résultats — Retrieval (recherche sémantique)
 
-Note méthodologique : le dataset applique un filtre round-trip à la génération, ce qui rend les scores absolus de Recall et Hit Rate optimistes par construction (ils confirment surtout la cohérence entre ce filtre et le retriever testé). Ces métriques sont donc utilisées ici en comparaison relative entre configurations de retrieval (sémantique vs hybride) plutôt que comme mesure absolue de performance. Le MRR, moins sujet à l'effet de plafond sur ce dataset, est la métrique la plus discriminante pour cette comparaison.
-
 <img width="450" height="257" alt="Capture d&#39;écran 2026-08-04 230715" src="https://github.com/user-attachments/assets/a5de6288-ebcb-4a04-a52c-9f67f5baa831" />
 
 <img width="626" height="258" alt="Capture d&#39;écran 2026-08-04 231625" src="https://github.com/user-attachments/assets/f31bb63a-478f-48ec-8726-a6e3d6f360ea" />
@@ -180,10 +178,21 @@ Note méthodologique : le dataset applique un filtre round-trip à la générati
 <img width="615" height="257" alt="Capture d&#39;écran 2026-08-05 040453" src="https://github.com/user-attachments/assets/81280714-090f-40fd-a25c-b7d7851693c4" />
 
 Sur ce dataset, l'hybride n'apporte pas d'amélioration mesurable, probablement parce que les questions générées sont sémantiquement proches de leur source. La comparaison se fera sur une évaluation humaine dans streamlit. 
+### Ré-évaluation avec poids différent - Impact du poids BM25 dans la fusion hybride
+
+| Config | Precision@5 | Recall@5 | MRR | Hit Rate@5 |
+|--------|-------------|----------|-----|------------|
+| Sémantique seul | 0.2000 | 1.0000 | 0.8767 | 1.0000 |
+| Hybride (BM25 0.2 / Sém. 0.8) | 0.2000 | 1.0000 | 0.8708 | 1.0000 |
+| Hybride (BM25 0.5 / Sém. 0.5) | 0.1918 | 0.9589 | 0.7884 | 0.9589 |
+
+L'augmentation du poids BM25 dégrade systématiquement les scores sur ce dataset. 
+Explication: les questions étant générées à partir du texte exact des chunks sources, elles favorisent structurellement la recherche sémantique; BM25 introduit plutôt du bruit lexical. 
+La configuration retenue pour ce projet est la recherche sémantique seule (ou un poids BM25 faible, ≤0.2).
 
 ### Partie Génération
 
-Modèle "gemini-2.5-pro"
+Modèle "gemini-2.5-pro" 
 
 Les données du dataset ont été générées par le modèle Mistral. Chaque (Question/Réponse/Contexte) à été soumis à une évalution via Gemini 2.5 Flash comme modèle de juge (LLM-as-a-judge). L'objectif était de mesurer la performance sur la Fidélité et la Pertinence des réponses.
 
@@ -217,6 +226,8 @@ Le score de ... est ....
 #### Faiblesses identifiées et pistes de correction
 
 A relancer apres modif
+
+
 
 
 

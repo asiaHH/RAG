@@ -11,11 +11,11 @@ def get_generation_metrics():
         FaithfulnessMetric(
             threshold=THRESHOLDS["faithfulness"],
             model=GEMINI_JUDGE,
-            include_reason=True,
+            include_reason=False,
         ),
         AnswerRelevancyMetric(
             threshold=THRESHOLDS["answer_relevancy"],
             model=GEMINI_JUDGE,
-            include_reason=True,
+            include_reason=False,
         ),
     ]
