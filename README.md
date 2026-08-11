@@ -45,19 +45,6 @@ Principe : nettoyer le minimum nécessaire, chaque transformation supprime de l'
 - Ratios positifs/négatifs paramétrables
 - LLM juge : Gemini Pro (pour éviter le self-enhancement bias)
 
----
-
-## Roadmap
-
-### Version (v1) — Retrieval sémantique seul
-- [ ] Évaluer le système v1
-
-### Version 2 — Amélioration du retrieval
-- [X] Ajouter BM25 (recherche hybride sémantique + lexicale)
-- [ ] Ré-évaluer et comparer avec v1
-
----
-
 ## Installation
 ```bash
 docker-compose up -d
@@ -214,6 +201,7 @@ Cela pointe vers deux pistes d'amélioration : un chunking plus fin ou une contr
 
 ### Exemple illustratif — dérapage hors-sujet malgré une bonne fidélité
 
+<img width="1233" height="767" alt="Capture d&#39;écran 2026-08-11 095018" src="https://github.com/user-attachments/assets/6c7ff959-a246-41f5-8d57-4d40a6c58ac5" />
 
 
 Le système répond correctement et cite fidèlement sa source (Faithfulness parfait), mais ajoute un bloc entier répondant à une question non posée, présente dans le même chunk récupéré. Ce dérapage fait chuter l'Answer Relevancy malgré une réponse principale exacte, illustrant le pattern identifié : un chunking au niveau document (plutôt que passage) amène le système à traiter le contexte comme un ensemble à couvrir plutôt qu'une source ciblée pour répondre précisément à la question posée.
