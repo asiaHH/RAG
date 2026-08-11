@@ -83,12 +83,13 @@ class GenerationEvaluator:
                 tc = self._build_test_case(item)
                 test_cases.append(tc)
             except Exception as e:
-                print(f"  ✗ Erreur sur {item['id']}: {e}")
+                print(f"  Erreur sur {item['id']}: {e}")
         
         # Évaluation par batch
         batch_size = 5
         total_batches = math.ceil(len(test_cases) / batch_size)
         all_test_results = []
+        failed_batches= []
 
         for i in range(0, len(test_cases), batch_size):
             batch = test_cases[i:i + batch_size]
@@ -96,17 +97,25 @@ class GenerationEvaluator:
             print(f"\nBatch {batch_num}/{total_batches} "
                 f"(questions {i+1} à {min(i+batch_size, len(test_cases))})...")
 
-            try:
-                result = evaluate(
-                    batch,
-                    self.generation_metrics,
-                    async_config=AsyncConfig(max_concurrent=3, throttle_value=1)
-                )
-                all_test_results.extend(result.test_results)
-                print(f"  ✓ Batch {batch_num} terminé")
-            except Exception as e:
-                print(f"  ✗ Batch {batch_num} échoué : {e}")
-                # On continue avec le batch suivant plutôt que de tout crasher
+            max_batch_retries = 2
+            for retry_attempt in range(max_batch_retries):
+                try:
+                    result = evaluate(
+                        batch,
+                        self.generation_metrics,
+                        async_config=AsyncConfig(max_concurrent=3, throttle_value=1)
+                    )
+                    all_test_results.extend(result.test_results)
+                    suffix= f" (réussi au retry {retry_attempt})" if retry_attempt else ""
+                    print(f"  ✓ Batch {batch_num} terminé{suffix}")
+                    break
+                except Exception as e:
+                    if retry_attempt < max_batch_retries - 1:
+                        print(f"  ✗ Batch {batch_num} échoué : {e}, nouvelle tentative dans 10s...")
+                        time.sleep(10)
+                    else:
+                        print(f"  ✗ Batch {batch_num} définitivement échoué après {max_batch_retries} tentatives : {e}")
+                        failed_batches.append(batch_num)
 
             # Pause inter-batch sauf après le dernier
             if i + batch_size < len(test_cases):
@@ -132,10 +141,16 @@ class GenerationEvaluator:
                 "n": len(scores)
             }
             print(f"\n{name} : {aggregated[name]['mean']:.4f} (sur {aggregated[name]['n']} questions)")
-        print(f"\nÉvaluation terminée : {len(all_test_results)}/{total_batches} batches réussis")
+
+        n_expected = len(test_cases)
+        n_obtained = len(all_test_results)
+        print(f"\nÉvaluation terminée : {n_obtained}/{n_expected} questions évaluées")
 
         final_report = {
             "summary": aggregated,
-            "details": all_test_results
+            "details": all_test_results,
+            "n_expected": n_expected,
+            "n_obtained": n_obtained,
+            "failed_batches": failed_batches
         }
         return final_report

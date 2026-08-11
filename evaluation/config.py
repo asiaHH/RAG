@@ -3,14 +3,14 @@ from deepeval.models.base_model import DeepEvalBaseLLM
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 class GeminiJudge(DeepEvalBaseLLM):
-    def __init__(self, model: str = "gemini-2.5-pro"): 
+    def __init__(self, model: str = "gemini-2.5-flash"):  # <-- pro -> flash
         self.model = ChatGoogleGenerativeAI(
             model=model,
             api_key=os.getenv("GOOGLE_API_KEY"),
             temperature=0.0,
             model_kwargs={
                 "generation_config": {
-                    "thinking_config": {"thinking_budget": 0},
+                    "thinking_config": {"thinking_budget": 1024},  # <-- 0 -> 1024
                     "response_mime_type": "application/json"
                 }
             }

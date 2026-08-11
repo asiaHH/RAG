@@ -82,13 +82,15 @@ def build_generation_prompt(chunk_text, question_type, dimensions, is_positive):
         str: the prompt to send to the LLM for question generation
     """
     dim_description = "\n".join(f"  - {dim}: {val}" for dim, val in dimensions.items())
+
+    q_type_value= question_type.value if isinstance(question_type, QuestionType) else question_type
     type_instructions = {
         QuestionType.FACTUAL: "une question factuelle dont la réponse est explicitement présente dans le texte",
         QuestionType.REASONING: "une question de raisonnement dont la réponse se déduit logiquement du texte sans être explicite",
         QuestionType.SUMMARY: "une question de synthèse qui demande de résumer les points clés du texte",
         QuestionType.UNANSWERABLE: "une question dont la réponse N'EST PAS dans le texte (hors-corpus)",
         QuestionType.MULTI_HOP: "une question qui nécessite de combiner plusieurs informations du texte",
-    }.get(question_type, "une question pertinente")
+    }.get(q_type_value, "une question pertinente")
     
     relevance_note = "La question doit être directement répondable depuis ce texte." if is_positive else "La question doit sembler plausible mais NE PAS être répondable depuis ce texte."
     
@@ -152,6 +154,10 @@ def parse_llm_qa_json(prompt, llm_client):
 
     question=(data.get("question") or data.get("Question") or data.get("query"))
     answer=(data.get("answer") or data.get("réponse") or data.get("expected_answer"))
+
+    if not question or not answer:
+        raise ValueError(f"Question ou réponse manquante dans le JSON")
+
     return question, answer
 
 
@@ -168,6 +174,10 @@ def export_dataset(dataset, output_path):
         item['id'] = f"q{i}" 
         item['input'] = item.pop('question')
         item['expected_output'] = item.pop('answer')
+
+        if hasattr(item['question_type'], 'value'):
+            item['question_type'] = item['question_type'].value
+
         serialized.append(item)
  
     with open(output_path, "w", encoding="utf-8") as f:
@@ -188,7 +198,11 @@ def load_checkpoint(checkpoint_path):
     with open(checkpoint_path, "r", encoding="utf-8") as f:
         raw = json.load(f)
     dataset = []
+    skipped = 0
     for item in raw:
+        if item.get("is_relevant", True) and "non disponible" in item.get("expected_output", "").lower():
+            skipped += 1
+            continue
         dataset.append(QAPair(
             question=item["input"],
             answer=item["expected_output"],
@@ -222,7 +236,12 @@ def generate_rag_dataset(chunks, llm_client, retriever=None, n_questions=DEFAULT
         list: a list of QAPair objects representing the generated dataset
     """
     if question_types is None:
-        question_types = [qt.value for qt in QuestionType]
+        question_types = [qt.value if hasattr(qt, 'value') else qt for qt in QuestionType]
+    else:
+        question_types = [qt.value if hasattr(qt, 'value') else qt for qt in question_types]
+
+    unanswerable_value = QuestionType.UNANSWERABLE.value
+
     if good_dimensions is None:
         good_dimensions = GOOD_DIMENSIONS
     if bad_dimensions is None:
@@ -251,7 +270,7 @@ def generate_rag_dataset(chunks, llm_client, retriever=None, n_questions=DEFAULT
             is_positive = False
         
         source_chunk = random.choice(chunks)
-        available_types = [t for t in question_types if t != QuestionType.UNANSWERABLE] if is_positive else question_types
+        available_types = [t for t in question_types if t != unanswerable_value] if is_positive else question_types
         q_type = random.choice(available_types)
         dims = sample_dimensions(good_dimensions if is_positive else bad_dimensions)
         
@@ -261,6 +280,8 @@ def generate_rag_dataset(chunks, llm_client, retriever=None, n_questions=DEFAULT
         for attempt in range(max_retries):
             try:
                 question, answer = parse_llm_qa_json(prompt, llm_client)
+                if is_positive and "non disponible" in answer.strip().lower():
+                    raise ValueError("Réponse positive invalide")
                 time.sleep(SLEEP_BETWEEN_CALLS)
                 break
             except ValueError as e:
@@ -276,7 +297,7 @@ def generate_rag_dataset(chunks, llm_client, retriever=None, n_questions=DEFAULT
         
         rtp = None
         if use_round_trip and retriever is not None:
-            if is_positive and q_type != QuestionType.UNANSWERABLE:
+            if is_positive and q_type != unanswerable_value:
                 rtp = round_trip_check(question, source_chunk.id, retriever, top_k)
                 time.sleep(SLEEP_BETWEEN_CALLS)
                 if not rtp:
@@ -308,15 +329,10 @@ def generate_rag_dataset(chunks, llm_client, retriever=None, n_questions=DEFAULT
             export_dataset(dataset, checkpoint_path)
     
     print(f"\nDataset généré : {generated_positive} positives, {generated_negative} négatives.")
-
-    #clear the checkpoint file after successful generation
-    if checkpoint_path and os.path.exists(checkpoint_path):
-        os.remove(checkpoint_path)
-
     return dataset
 
 
-def generate_dataset_with_ratio(ratio: float, n_questions: int = 20):
+def generate_dataset_with_ratio(ratio: float, n_questions: int = 20, output_path: str = None):
     """
     Generate a RAG evaluation dataset with a specified ratio of positive (relevant) questions.
     Args:
@@ -339,6 +355,11 @@ def generate_dataset_with_ratio(ratio: float, n_questions: int = 20):
 
     print(f"Chunks chargés depuis la base : {len(chunks)}")
     
+    if output_path is None:
+        output_path = f"evaluation/dataset/generated_dataset_V3_ratio_{ratio}.json"
+
+    checkpoint_path= output_path.replace(".json", "_checkpoint.json")
+
     dataset = generate_rag_dataset(
         chunks=chunks,
         llm_client=RealLLMClient(),
@@ -346,11 +367,15 @@ def generate_dataset_with_ratio(ratio: float, n_questions: int = 20):
         n_questions=n_questions,
         positive_ratio=ratio,
         use_round_trip=True,
-        checkpoint_path=f"evaluation/dataset/checkpoint_dataset_ratio_{ratio}.json"
+        checkpoint_path=checkpoint_path
     )
-    
-    export_dataset(dataset, f"evaluation/dataset/generated_dataset_V3_ratio_{ratio}.json")
-    print(f"Dataset généré avec ratio {ratio} → evaluation/dataset/generated_dataset_V3_ratio_{ratio}.json")
+
+    export_dataset(dataset, output_path)
+
+    if checkpoint_path and os.path.exists(checkpoint_path):
+        os.remove(checkpoint_path)
+
+    print(f"Dataset généré avec ratio {ratio} → {output_path}")
     return dataset
 
 if __name__ == "__main__":
@@ -359,7 +384,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Génère un dataset d'évaluation RAG")
     parser.add_argument("--ratio", type=float, default=0.8, help="Ratio de questions positives (ex. 0.8 pour 80%)")
     parser.add_argument("--n_questions", type=int, default=20, help="Nombre total de questions")
+    parser.add_argument("--output", type=str, default=None, help="Chemin personnalisé du fichier JSON de sortie")
     args = parser.parse_args()
     
-    generate_dataset_with_ratio(ratio=args.ratio, n_questions=args.n_questions)
+    generate_dataset_with_ratio(ratio=args.ratio, n_questions=args.n_questions, output_path=args.output)
 

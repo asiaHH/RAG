@@ -177,18 +177,18 @@ def print_results(results):
     table.add_column("Statut", justify="center", width=10)
 
     category_map = {
-        "ContextualPrecisionMetric": "Retrieval",
-        "ContextualRecallMetric": "Retrieval",
-        "ContextualRelevancyMetric": "Retrieval",
-        "FaithfulnessMetric": "Génération", # a garder elle verifie si le rag hallucine pas
-        "AnswerRelevancyMetric": "Génération",# a garder verifie si la reponse repond bien a la question
+        "Contextual Precision": "Retrieval",
+        "Contextual Recall": "Retrieval",
+        "Contextual Relevancy": "Retrieval",
+        "Faithfulness": "Génération",
+        "Answer Relevancy": "Génération",
     }
     threshold_map = {
-        "ContextualPrecisionMetric": 0.7,
-        "ContextualRecallMetric": 0.7,
-        "ContextualRelevancyMetric": 0.6,
-        "FaithfulnessMetric": 0.8,
-        "AnswerRelevancyMetric": 0.75,
+        "Contextual Precision": 0.7,
+        "Contextual Recall": 0.7,
+        "Contextual Relevancy": 0.6,
+        "Faithfulness": 0.8,
+        "Answer Relevancy": 0.75,
     }
 
     scores_by_category = {"Retrieval": [], "Génération": []}
@@ -273,10 +273,8 @@ Exemples:
 
     #on separe les deux population une seule fois
     dataset_pertinent = [item for item in dataset if item.get("is_relevant", True)]
-    dataset_mixte = dataset # on garde tout pour la generation
 
     console.print(f"  -> {len(dataset_pertinent)} questions pertinentes (retrieval)")
-    console.print(f"  -> {len(dataset_mixte)} questions mixtes (génération)\n")
     
     # Évaluation retrieval
     if args.retrieval or run_both:
@@ -284,7 +282,7 @@ Exemples:
     
     # Évaluation génération
     if args.generation or run_both:
-        generation_results = run_generation_evaluation(vector_store, dataset_mixte, args)
+        generation_results = run_generation_evaluation(vector_store, dataset_pertinent, args)
     
     console.print("\n[bold green]✓ Évaluation terminée![/bold green]")
 
