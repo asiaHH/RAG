@@ -192,41 +192,31 @@ La configuration retenue pour ce projet est la recherche sémantique seule (ou u
 
 ### Partie Génération
 
-Modèle "gemini-2.5-pro" 
+Modèle "gemini-2.5-flash"
 
 Les données du dataset ont été générées par le modèle Mistral. Chaque (Question/Réponse/Contexte) à été soumis à une évalution via Gemini 2.5 Flash comme modèle de juge (LLM-as-a-judge). L'objectif était de mesurer la performance sur la Fidélité et la Pertinence des réponses.
 
 
 ### Analyse des résultats
 
-#### Résumé global (30 questions)
-Modif eval à lancer seulement sur pertinente.
+### Résultats — Génération (Faithfulness, Answer Relevancy)
 
-L'affichage des résultats des scores pour chaque questions afin de savoir quels questions a échoué:
+| Métrique | Score moyen | Seuil | Pass rate |
+|----------|-------------|-------|-----------|
+| Faithfulness | 0.94 | 0.80 | 100% (15/15) |
+| Answer Relevancy | 0.80 | 0.75 | 73% (11/15) |
 
+**Couverture** : 15/30 questions évaluées. 3 batches sur 6 ont échoué de façon répétée (erreur de parsing JSON du LLM-judge, Gemini 2.5 Flash) même après retry automatique, ce souci semble corrélé aux réponses les plus longues/complexes plutôt que purement aléatoire. Basculer vers Gemini 2.5 Pro est la prochaine amélioration à apporter.
 
-> Modèle d'évaluation : Gemini 2.5 Pro via DeepEval  
-> Dataset : 30 questions
+**Lecture des résultats** : le système est très fidèle à son contexte (Faithfulness 0.94, aucun échec), peu ou pas d'hallucination. 
+La faiblesse relative en Answer Relevancy (0.80, 4 échecs sur 15) provient d'un pattern récurrent et identifiable : quand un chunk récupéré contient plusieurs questions/exercices distincts (conséquence du chunking au niveau document entier), le système tend à répondre à l'ensemble du contenu du chunk plutôt qu'à se concentrer sur la question posée. La réponse reste factuellement fondée (d'où un bon Faithfulness) mais s'écarte du sujet précis (d'où un Answer Relevancy pénalisé).
+Cela pointe vers deux pistes d'amélioration : un chunking plus fin ou une contrainte explicite dans le prompt de génération pour recentrer la réponse sur la question posée.
 
----
-
-#### Interprétation des métriques
-
-##### Faithfulness ()
-
-Un score de ... signifie ....
-
-##### Answer Relevancy ()
-
-Le score de ... est ....
-
----
+### Exemple illustratif — dérapage hors-sujet malgré une bonne fidélité
 
 
-#### Faiblesses identifiées et pistes de correction
 
-A relancer apres modif
-
+Le système répond correctement et cite fidèlement sa source (Faithfulness parfait), mais ajoute un bloc entier répondant à une question non posée, présente dans le même chunk récupéré. Ce dérapage fait chuter l'Answer Relevancy malgré une réponse principale exacte, illustrant le pattern identifié : un chunking au niveau document (plutôt que passage) amène le système à traiter le contexte comme un ensemble à couvrir plutôt qu'une source ciblée pour répondre précisément à la question posée.
 
 
 
