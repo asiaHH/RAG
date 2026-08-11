@@ -219,7 +219,12 @@ Cela pointe vers deux pistes d'amélioration : un chunking plus fin ou une contr
 Le système répond correctement et cite fidèlement sa source (Faithfulness parfait), mais ajoute un bloc entier répondant à une question non posée, présente dans le même chunk récupéré. Ce dérapage fait chuter l'Answer Relevancy malgré une réponse principale exacte, illustrant le pattern identifié : un chunking au niveau document (plutôt que passage) amène le système à traiter le contexte comme un ensemble à couvrir plutôt qu'une source ciblée pour répondre précisément à la question posée.
 
 
+A FAIRE
 
+- ajouter historique streamlit
+- ajout multi utilisateur
+- deployer cloud
+- tester avec mamouth
 
 
 

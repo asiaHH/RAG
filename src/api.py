@@ -6,21 +6,35 @@ from dotenv import load_dotenv
 from src.rag import generate_response
 from src.ingestion.loaders import ingest_pdf, ingest_txt, ingest_pptx, ingest_excel, ingest_csv, ingest_docx
 import shutil
-from typing import List
+from typing import List, Optional
 import logging
 from fastapi.responses import JSONResponse
 from src.ingestion import pipeline, sync
+from src.db.conversation import Conversation
+from src.config import PSYCOPG2_CONNECTION_STRING
 
 load_dotenv()
 logger = logging.getLogger(__name__)
+
+conversation_store = Conversation(PSYCOPG2_CONNECTION_STRING)
 
 app=FastAPI(title="RAG API", description="API for the RAG system with MistralAI and Postgres")
 
 class RequestModel(BaseModel):
     query: str
+    conversation_id: Optional[str] = None
 
 class SyncRequest(BaseModel):
     directory: str = "data"
+
+class CreateConversationRequest(BaseModel):
+    title: str = "Nouvelle discussion"
+
+class AddMessageRequest(BaseModel):
+    role: str
+    content: str
+    sources: Optional[list] = None
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -36,6 +50,32 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.get("/")
 def read_root():
     return {"status": "The API is online"}
+
+# --- Endpoints de gestion des Conversations ---
+
+@app.get("/conversations")
+def get_conversations():
+    return conversation_store.list_conversations()
+
+@app.post("/conversations")
+def create_conversation(req: CreateConversationRequest):
+    conv_id = conversation_store.create_conversation(title=req.title)
+    return {"id": conv_id, "title": req.title}
+
+@app.get("/conversations/{conversation_id}/messages")
+def get_messages(conversation_id: str):
+    return conversation_store.load_messages(conversation_id)
+
+@app.delete("/conversations/{conversation_id}")
+def delete_conversation(conversation_id: str):
+    conversation_store.delete_conversation(conversation_id)
+    return {"status": "deleted"}
+
+@app.post("/conversations/{conversation_id}/messages")
+def add_message_to_conv(conversation_id: str, req: AddMessageRequest):
+    conversation_store.add_message(conversation_id, req.role, req.content, req.sources)
+    return {"status": "added"}
+
 
 @app.post("/upload-multiple")
 async def upload_multiple(files: List[UploadFile] = File(...)):
@@ -120,6 +160,10 @@ async def ask_question(request: RequestModel):
                 }
             }
             sources.append(source_dict)
+
+        if request.conversation_id:
+            conversation_store.add_message(request.conversation_id, "user", request.query)
+            conversation_store.add_message(request.conversation_id, "assistant", answer, sources)
         
         return {
             "question": request.query,
