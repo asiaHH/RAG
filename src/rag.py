@@ -9,13 +9,16 @@ from langchain_core.retrievers import BaseRetriever
 from langchain_core.documents import Document
 from src.config import PSYCOPG2_CONNECTION_STRING
 
-def get_retriever(vector_store, k: int = 5):
+def get_retriever(vector_store, k: int = 5, user_id: str = None):
     """
     Returns the retriever for the RAG, reusable for evaluation.
     """
+    search_kwargs = {"k": k}
+    if user_id:
+        search_kwargs["filter"] = {"user_id": user_id}
     return vector_store.as_retriever(
         search_type="similarity",
-        search_kwargs={"k": k}
+        search_kwargs=search_kwargs
     )
 
 
@@ -25,6 +28,7 @@ class PostgresBM25Retriever(BaseRetriever):
     No corpus in memory: the lexical search is done on the Postgres side.
     """
     k: int = 5
+    user_id: str
 
     @staticmethod
     def _sanitize_query(query: str) -> str:
@@ -45,11 +49,11 @@ class PostgresBM25Retriever(BaseRetriever):
                     """
                     SELECT document, cmetadata, paradedb.score(uuid) AS score
                     FROM langchain_pg_embedding
-                    WHERE document @@@ %s
+                    WHERE document @@@ %s AND cmetadata->>'user_id' = %s
                     ORDER BY score DESC
                     LIMIT %s;
                     """,
-                    (sanitized_query, self.k)
+                    (sanitized_query, self.user_id, self.k)
                 )
                 rows = cur.fetchall()
 
@@ -59,20 +63,20 @@ class PostgresBM25Retriever(BaseRetriever):
         ]
 
 
-def get_hybrid_retriever(vector_store, k: int = 5):
+def get_hybrid_retriever(vector_store, user_id: str, k: int = 5):
     """
     Hybrid retriever : BM25 (pg_search, in database) + vector similarity (pgvector),
     merged by RRF via EnsembleRetriever.
     """
-    semantic_retriever = get_retriever(vector_store, k=k)
-    bm25_retriever = PostgresBM25Retriever(k=k)
+    semantic_retriever = get_retriever(vector_store, k=k, user_id=user_id)
+    bm25_retriever = PostgresBM25Retriever(k=k, user_id=user_id)
 
     return EnsembleRetriever(
         retrievers=[bm25_retriever, semantic_retriever],
         weights=[0.0, 1.0],  # à ajuster selon l'éval
     )
 
-def generate_response(vector_store, question, retriever=None):
+def generate_response(vector_store, question, user_id, retriever=None):
     """
     Generate a response to a question using the vector store and a language model.
     :param vector_store: The vector store containing the indexed documents
@@ -97,7 +101,7 @@ def generate_response(vector_store, question, retriever=None):
             prompt=prompt
         )
 
-        active_retriever = retriever if retriever is not None else get_hybrid_retriever(vector_store)
+        active_retriever = retriever if retriever is not None else get_hybrid_retriever(vector_store, user_id=user_id)
 
         
         retrieval_chain = create_retrieval_chain(

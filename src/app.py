@@ -6,6 +6,83 @@ API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
 
 st.set_page_config(page_title="RAG with MistralAI", layout="wide")
 
+# ---Auth: bloque l'accees tant que non connecte---
+if "token" not in st.session_state:
+    st.session_state.token = None
+    st.session_state.user = None
+
+def login(email, password):
+    try:
+        response = requests.post(f"{API_URL}/auth/login", json={"email": email, "password": password})
+        if response.status_code == 200:
+            data = response.json()
+            st.session_state.token = data["access_token"]
+            st.session_state.user = {"email": email}
+            return True
+        else:
+            st.error("Échec de la connexion. Vérifiez vos identifiants.")
+            return False
+    except Exception as e:
+        st.error(f"Erreur lors de la connexion: {e}")
+        return False
+
+def register(email, password):
+    try:
+        res = requests.post(f"{API_URL}/auth/register", json={"email": email, "password": password})
+    except Exception as e:
+        return False, f"Erreur réseau: {e}"
+
+    if res.status_code != 200:
+        return False, res.json().get("detail", "Erreur inconnue")
+
+    data = res.json()
+    st.session_state.token = data["access_token"]
+
+    me = requests.get(f"{API_URL}/auth/me", headers=auth_headers())
+    if me.status_code != 200:
+        st.session_state.token = None
+        return False, f"Compte créé mais erreur de connexion automatique: {me.text}"
+
+    st.session_state.user = me.json()
+    return True, None
+
+def auth_headers():
+    return {"Authorization": f"Bearer {st.session_state.token}"} if st.session_state.token else {}
+
+if st.session_state.token is None:
+    st.title("Connexion")
+    tab_login, tab_register = st.tabs(["Connexion", "Créer un compte"])
+
+    with tab_login:
+        email = st.text_input("Email", key="login_email")
+        password = st.text_input("Mot de passe", type="password", key="login_password")
+        if st.button("Connexion"):
+            if login(email, password):
+                st.rerun()
+            else:
+                st.error("Email ou mot de passe incorrect")
+
+    with tab_register:
+        email_r=st.text_input("Email", key="register_email")
+        password_r=st.text_input("Mot de passe", type="password", key="register_password")
+        if st.button("Créer un compte"):
+            ok, error = register(email_r, password_r)
+            if ok:
+                st.rerun()
+            else:
+                st.error(f"Erreur lors de la création du compte: {error}")
+
+    st.stop()  # Stop further execution until the user is logged in
+
+st.sidebar.markdown(f"Connecté : **{st.session_state.user['email']}**")
+if st.sidebar.button("Déconnexion"):
+    st.session_state.token = None
+    st.session_state.user = None
+    st.session_state.conversation_id = None
+    st.session_state.messages = []
+    st.rerun()
+
+
 st.title("Assistant Intelligent")
 st.markdown("---")
 
@@ -20,13 +97,13 @@ if "uploaded_names" not in st.session_state:
 # --- Helper functions HTTP ---
 def fetch_conversations():
     try:
-        res = requests.get(f"{API_URL}/conversations")
+        res = requests.get(f"{API_URL}/conversations", headers=auth_headers())
         return res.json() if res.status_code == 200 else []
     except Exception:
         return []
 
 def load_conversation_messages(conv_id):
-    res = requests.get(f"{API_URL}/conversations/{conv_id}/messages")
+    res = requests.get(f"{API_URL}/conversations/{conv_id}/messages", headers=auth_headers())
     if res.status_code != 200:
         st.error(f"Erreur chargement messages: {res.status_code} - {res.text}")
         return []
@@ -34,7 +111,7 @@ def load_conversation_messages(conv_id):
 
 def delete_conv(conv_id):
     try:
-        requests.delete(f"{API_URL}/conversations/{conv_id}")
+        requests.delete(f"{API_URL}/conversations/{conv_id}", headers=auth_headers())
     except Exception:
         pass
 
@@ -88,10 +165,10 @@ with col1:
         if new_files:
             with st.spinner("Synchronisation en cours..."):
                 files_payload = [("files", (f.name, f.getvalue(), f.type)) for f in new_files]
-                resp = requests.post(f"{API_URL}/upload-multiple", files=files_payload)
+                resp = requests.post(f"{API_URL}/upload-multiple", files=files_payload, headers=auth_headers())
                 if resp.status_code == 200:
                     st.session_state.uploaded_names.extend([f.name for f in new_files])
-                    sync_resp = requests.post(f"{API_URL}/sync")
+                    sync_resp = requests.post(f"{API_URL}/sync", headers=auth_headers())
                     if sync_resp.status_code == 200:
                         st.sidebar.success("Collection synchronisée !")
                     else:
@@ -107,7 +184,7 @@ with col2:
         else:
             with st.spinner("Synchronisation en cours..."):
                 try:
-                    resp = requests.post(f"{API_URL}/sync", json={"directory": directory_path})
+                    resp = requests.post(f"{API_URL}/sync", json={"directory": directory_path}, headers=auth_headers())
                     if resp.status_code == 200:
                         st.sidebar.success("Répertoire synchronisé !")
                     else:
@@ -119,7 +196,7 @@ st.sidebar.markdown("---")
 if st.sidebar.button(" Vider Collection", type="secondary"):
     with st.spinner("Vidage de la collection en cours..."):
         try:
-            resp = requests.post(f"{API_URL}/clear-collection")
+            resp = requests.post(f"{API_URL}/clear-collection", headers=auth_headers())
             if resp.status_code == 200:
                 st.sidebar.success("Collection vidée complètement !")
                 st.session_state.uploaded_names = []
@@ -151,7 +228,7 @@ if prompt := st.chat_input("Posez votre question..."):
     if st.session_state.conversation_id is None:
         title = prompt[:50] + "..." if len(prompt) > 50 else prompt
         try:
-            res = requests.post(f"{API_URL}/conversations", json={"title": title})
+            res = requests.post(f"{API_URL}/conversations", json={"title": title}, headers=auth_headers())
             if res.status_code == 200:
                 st.session_state.conversation_id = res.json().get("id")
             else:
@@ -175,7 +252,7 @@ if prompt := st.chat_input("Posez votre question..."):
                 if st.session_state.conversation_id:
                     payload["conversation_id"] = st.session_state.conversation_id
 
-                response = requests.post(f"{API_URL}/ask", json=payload )
+                response = requests.post(f"{API_URL}/ask", json=payload, headers=auth_headers())
             
                 if response.status_code == 200:
                     data = response.json()

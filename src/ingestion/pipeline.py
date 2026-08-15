@@ -22,36 +22,23 @@ def init_vector_store():
         print(f"Error PGVector: {e}")
         return None
 
-def clear_collection():
+def clear_user_collection(user_id: str) -> bool:
     """
-    Completely empty the vector collection and the documents catalog.
-    Deletes all documents, embeddings and entries from the catalog.
+    Delete only the documents and catalog entries belonging to a given user.
     """
     global vector_store
     
-    # empty the document_catalog table
     try:
         with psycopg2.connect(PSYCOPG2_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
-                cur.execute("DELETE FROM document_catalog;")
+                cur.execute("DELETE FROM document_catalog WHERE user_id = %s;", (user_id,))
+                cur.execute(
+                    "DELETE FROM langchain_pg_embedding WHERE cmetadata->>'user_id' = %s;",
+                    (user_id,)
+                )
                 conn.commit()
-        print("Catalogue des documents vidé.")
-    except Exception as e:
-        print(f"Erreur lors du vidage du catalogue: {e}")
-        return False
-    
-    # empty the PGVector tables
-    if vector_store is None:
-        vector_store = init_vector_store()
-    
-    try:
-        # delete all documents from the collection
-        vector_store.delete_collection()
-        print("Collection vectorielle vidée.")
-        
-        # reinitialize the instance to force recreation
-        vector_store = None
+        print(f"Documents de l'utilisateur {user_id} supprimés.")
         return True
     except Exception as e:
-        print(f"Erreur lors du vidage de la collection vectorielle: {e}")
+        print(f"Erreur lors du vidage du catalogue: {e}")
         return False

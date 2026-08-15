@@ -14,9 +14,14 @@ class Conversation:
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS conversations (
                         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        user_id UUID NOT NULL,
                         title TEXT,
                         created_at TIMESTAMP DEFAULT now()
                     );
+                """)
+                cur.execute("""
+                    ALTER TABLE conversations
+                    ADD COLUMN IF NOT EXISTS user_id UUID;
                 """)
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS messages (
@@ -30,12 +35,12 @@ class Conversation:
                 """)
                 conn.commit()
 
-    def create_conversation(self, title: str = "Nouvelle discussion") -> str:
+    def create_conversation(self, user_id: str, title: str = "Nouvelle discussion") -> str:
         with psycopg2.connect(self.connection_string) as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO conversations (title) VALUES (%s) RETURNING id;",
-                    (title,)
+                    "INSERT INTO conversations (user_id, title) VALUES (%s, %s) RETURNING id;",
+                    (user_id, title)
                 )
                 conv_id = cur.fetchone()[0]
                 conn.commit()
@@ -53,34 +58,49 @@ class Conversation:
                 )
                 conn.commit()
 
-    def list_conversations(self) -> List[Dict]:
+    def list_conversations(self, user_id: str) -> List[Dict]:
         with psycopg2.connect(self.connection_string) as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT id, title, created_at FROM conversations ORDER BY created_at DESC;"
+                    "SELECT id, title, created_at FROM conversations WHERE user_id = %s ORDER BY created_at DESC;",
+                    (user_id,)
                 )
                 return [
                     {"id": str(row[0]), "title": row[1], "created_at": row[2]}
                     for row in cur.fetchall()
                 ]
 
-    def load_messages(self, conversation_id: str) -> List[Dict]:
+    def load_messages(self, conversation_id: str, user_id: str) -> List[Dict]:
         with psycopg2.connect(self.connection_string) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT role, content, sources FROM messages
-                    WHERE conversation_id = %s ORDER BY created_at;
+                    SELECT m.role, m.content, m.sources FROM messages m
+                    JOIN conversations c ON c.id = m.conversation_id
+                    WHERE m.conversation_id = %s AND c.user_id = %s
+                    ORDER BY m.created_at;
                     """,
-                    (conversation_id,)
+                    (conversation_id, user_id)
                 )
                 return [
                     {"role": row[0], "content": row[1], "sources": row[2] or []}
                     for row in cur.fetchall()
                 ]
 
-    def delete_conversation(self, conversation_id: str):
+    def conversation_belongs_to_user(self, conversation_id: str, user_id: str) -> bool:
         with psycopg2.connect(self.connection_string) as conn:
             with conn.cursor() as cur:
-                cur.execute("DELETE FROM conversations WHERE id = %s;", (conversation_id,))
+                cur.execute(
+                    "SELECT 1 FROM conversations WHERE id = %s AND user_id = %s;",
+                    (conversation_id, user_id)
+                )
+                return cur.fetchone() is not None
+
+    def delete_conversation(self, conversation_id: str, user_id: str):
+        with psycopg2.connect(self.connection_string) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM conversations WHERE id = %s AND user_id = %s;",
+                    (conversation_id, user_id)
+                )
                 conn.commit()

@@ -1,22 +1,25 @@
 import os
 import traceback
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Depends
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from src.rag import generate_response
 from src.ingestion.loaders import ingest_pdf, ingest_txt, ingest_pptx, ingest_excel, ingest_csv, ingest_docx
+from src.auth import create_access_token, get_current_user, require_admin
 import shutil
 from typing import List, Optional
 import logging
 from fastapi.responses import JSONResponse
 from src.ingestion import pipeline, sync
 from src.db.conversation import Conversation
+from src.db.users import Users
 from src.config import PSYCOPG2_CONNECTION_STRING
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
 conversation_store = Conversation(PSYCOPG2_CONNECTION_STRING)
+user_store = Users(PSYCOPG2_CONNECTION_STRING)
 
 app=FastAPI(title="RAG API", description="API for the RAG system with MistralAI and Postgres")
 
@@ -35,6 +38,14 @@ class AddMessageRequest(BaseModel):
     content: str
     sources: Optional[list] = None
 
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -51,43 +62,70 @@ async def global_exception_handler(request: Request, exc: Exception):
 def read_root():
     return {"status": "The API is online"}
 
+# --- Endpoints de gestion des utilisateurs ---
+@app.post("/auth/register")
+def register(req: RegisterRequest):
+    if user_store.get_user_by_email(req.email):
+        raise HTTPException(status_code=400, detail="Cet email est déjà utilisé")
+    user_id = user_store.create_user(req.email, req.password)
+    token = create_access_token(user_id, req.email, is_admin=False)
+    return {"access_token": token, "token_type": "bearer"}
+
+
+@app.post("/auth/login")
+def login(req: LoginRequest):
+    user = user_store.verify_password(req.email, req.password)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Email ou mot de passe incorrect")
+    token = create_access_token(user["id"], user["email"], user["is_admin"])
+    return {"access_token": token, "token_type": "bearer"}
+
+
+@app.get("/auth/me")
+def me(user: dict = Depends(get_current_user)):
+    return user
+
+
 # --- Endpoints de gestion des Conversations ---
 
 @app.get("/conversations")
-def get_conversations():
-    return conversation_store.list_conversations()
+def get_conversations(user: dict = Depends(get_current_user)):
+    return conversation_store.list_conversations(user["sub"])
 
 @app.post("/conversations")
-def create_conversation(req: CreateConversationRequest):
-    conv_id = conversation_store.create_conversation(title=req.title)
+def create_conversation(req: CreateConversationRequest, user: dict = Depends(get_current_user)):
+    conv_id = conversation_store.create_conversation(user["sub"], title=req.title)
     return {"id": conv_id, "title": req.title}
 
 @app.get("/conversations/{conversation_id}/messages")
-def get_messages(conversation_id: str):
-    return conversation_store.load_messages(conversation_id)
+def get_messages(conversation_id: str, user: dict = Depends(get_current_user)):
+    return conversation_store.load_messages(conversation_id, user["sub"])
 
 @app.delete("/conversations/{conversation_id}")
-def delete_conversation(conversation_id: str):
-    conversation_store.delete_conversation(conversation_id)
+def delete_conversation(conversation_id: str, user: dict = Depends(get_current_user)):
+    conversation_store.delete_conversation(conversation_id, user["sub"])
     return {"status": "deleted"}
 
 @app.post("/conversations/{conversation_id}/messages")
-def add_message_to_conv(conversation_id: str, req: AddMessageRequest):
+def add_message_to_conv(conversation_id: str, req: AddMessageRequest, user: dict = Depends(get_current_user)):
+    if not conversation_store.conversation_belongs_to_user(conversation_id, user["sub"]):
+        raise HTTPException(status_code=404, detail="Conversation introuvable")
     conversation_store.add_message(conversation_id, req.role, req.content, req.sources)
     return {"status": "added"}
 
 
 @app.post("/upload-multiple")
-async def upload_multiple(files: List[UploadFile] = File(...)):
+async def upload_multiple(files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
     """
     Endpoint to upload multiple files. Each file is saved to the "data" directory.    
     :param files: A list of files uploaded by the user
     :return: A JSON response indicating the success or failure of the upload process
     """
     try:
-        os.makedirs("data", exist_ok=True)
+        user_dir = f"data/{user['sub']}"
+        os.makedirs(user_dir, exist_ok=True)
         for file in files:
-            path = f"data/{file.filename}"
+            path = f"{user_dir}/{file.filename}"
             with open(path, "wb") as f:
                 shutil.copyfileobj(file.file, f)
         return {"status": "Files uploaded and processed successfully"}
@@ -96,18 +134,18 @@ async def upload_multiple(files: List[UploadFile] = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
     
 @app.post("/sync")
-async def sync_collection_endpoint(request: SyncRequest = None):
+async def sync_collection_endpoint(request: SyncRequest = None, user: dict = Depends(get_current_user)):
     """
     Endpoint to synchronize the vector store with the files in the specified directory.
     :param request: A SyncRequest object containing the directory to synchronize
     :return: A JSON response indicating the success or failure of the synchronization process
     """
-    directory = request.directory if request else "data"
+    directory = request.directory if request else f"data/{user['sub']}"
     try:
         if pipeline.vector_store is None:
             pipeline.init_vector_store()
 
-        sync.sync_collection(directory)
+        sync.sync_collection(directory, user["sub"])
 
         return {"status": f"Collection {os.path.basename(directory)} synchronised with success"}
     except Exception as e:
@@ -116,14 +154,14 @@ async def sync_collection_endpoint(request: SyncRequest = None):
         raise HTTPException(status_code=500, detail=str(e))
     
 @app.post("/clear-collection")
-async def clear_collection_endpoint():
+async def clear_collection_endpoint(user: dict = Depends(get_current_user)):
     """
     Endpoint to completely clear the vector collection.
     This removes all documents and embeddings from the vector store.
     :return: A JSON response indicating the success or failure of the operation
     """
     try:
-        success = pipeline.clear_collection()
+        success = pipeline.clear_user_collection(user["sub"])
         if success:
             return {"status": "Collection vidée complètement avec succès"}
         else:
@@ -133,7 +171,7 @@ async def clear_collection_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
     
 @app.post("/ask")
-async def ask_question(request: RequestModel):
+async def ask_question(request: RequestModel, user: dict = Depends(get_current_user)):
     """
     Endpoint to ask a question to the RAG system. The question is processed using the generate_response function, which retrieves relevant documents from the vector store and generates an answer using the MistralAI model.
     :param request: A RequestModel object containing the user's question
@@ -144,7 +182,7 @@ async def ask_question(request: RequestModel):
         raise HTTPException(status_code=400, detail="Please upload a PDF first via /upload")
     
     try:
-        result = generate_response(pipeline.vector_store, request.query)
+        result = generate_response(pipeline.vector_store, request.query, user["sub"])
         answer = result["answer"]
         docs = result["sources"]
 
@@ -162,8 +200,9 @@ async def ask_question(request: RequestModel):
             sources.append(source_dict)
 
         if request.conversation_id:
-            conversation_store.add_message(request.conversation_id, "user", request.query)
-            conversation_store.add_message(request.conversation_id, "assistant", answer, sources)
+            if conversation_store.conversation_belongs_to_user(request.conversation_id, user["sub"]):
+                conversation_store.add_message(request.conversation_id, "user", request.query)
+                conversation_store.add_message(request.conversation_id, "assistant", answer, sources)
         
         return {
             "question": request.query,
@@ -173,30 +212,6 @@ async def ask_question(request: RequestModel):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/generate")
-async def generate_response_endpoint(file_path: str, question: str):
-    """
-    Endpoint to generate a response based on a given file and a question. The file is ingested into the vector store, and the question is processed to retrieve relevant information from the file and generate an answer.
-    
-    :param file_path: The path to the file to be ingested
-    :param question: The question to be answered
-    :return: A direct response
-    """
-    if file_path.endswith(".pdf"):
-        vector_store = ingest_pdf(file_path)
-    elif file_path.endswith(".txt"):
-        vector_store = ingest_txt(file_path)
-    elif file_path.endswith(".pptx"):
-        vector_store = ingest_pptx(file_path)
-    elif file_path.endswith(".xlsx"):
-        vector_store = ingest_excel(file_path)
-    elif file_path.endswith(".csv"):
-        vector_store = ingest_csv(file_path)
-    elif file_path.endswith(".docx"):
-        vector_store = ingest_docx(file_path)
-    
-    result = generate_response(vector_store, question)
-    return result
 
 if __name__ == "__main__":
     import uvicorn

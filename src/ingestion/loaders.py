@@ -22,7 +22,7 @@ def get_chunk_hash(content: str) -> str:
     """
     return hashlib.sha256(content.encode('utf-8')).hexdigest()
 
-def chunk_exists_in_db(chunk_hash: str) -> bool:
+def chunk_exists_in_db(chunk_hash: str, user_id: str) -> bool:
     """
     Verify if a chunk_hash already exists in the database via direct SQL query.
     :param chunk_hash: The hash of the chunk to verify
@@ -32,26 +32,27 @@ def chunk_exists_in_db(chunk_hash: str) -> bool:
         with psycopg2.connect(PSYCOPG2_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT 1 FROM langchain_pg_embedding WHERE cmetadata->>'chunk_hash' = %s LIMIT 1",
-                    (chunk_hash,)
+                    "SELECT 1 FROM langchain_pg_embedding WHERE cmetadata->>'chunk_hash' = %s AND cmetadata->>'user_id' = %s LIMIT 1",
+                    (chunk_hash, user_id)
                 )
                 return cur.fetchone() is not None
     except Exception as e:
         print(f"Erreur lors de la vérification du chunk: {e}")
         return False
 
-def delete_chunk_by_hash(chunk_hash: str) -> bool:
+def delete_chunk_by_hash(chunk_hash: str, user_id: str) -> bool:
     """
-    Delete a chunk from the database via its hash.
+    Delete a chunk from the database via its hash, scoped to a user.
     :param chunk_hash: The hash of the chunk to delete
+    :param user_id: The user this chunk belongs to
     :return: True if deleted, False otherwise
     """
     try:
         with psycopg2.connect(PSYCOPG2_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "DELETE FROM langchain_pg_embedding WHERE cmetadata->>'chunk_hash' = %s",
-                    (chunk_hash,)
+                    "DELETE FROM langchain_pg_embedding WHERE cmetadata->>'chunk_hash' = %s AND cmetadata->>'user_id' = %s",
+                    (chunk_hash, user_id)
                 )
                 conn.commit()
                 return cur.rowcount > 0
@@ -59,12 +60,34 @@ def delete_chunk_by_hash(chunk_hash: str) -> bool:
         print(f"Erreur lors de la suppression du chunk: {e}")
         return False
 
-def upsert_chunks(chunks):
+def delete_chunks_by_source(source_id: str, user_id: str) -> int:
+    """
+    Delete all chunks belonging to a given source_id, scoped to a user, via direct SQL.
+    :return: Number of chunks deleted
+    """
+    try:
+        with psycopg2.connect(PSYCOPG2_CONNECTION_STRING) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    DELETE FROM langchain_pg_embedding
+                    WHERE cmetadata->>'source_id' = %s AND cmetadata->>'user_id' = %s
+                    """,
+                    (source_id, user_id)
+                )
+                conn.commit()
+                return cur.rowcount
+    except Exception as e:
+        print(f"Erreur lors de la suppression des chunks du fichier {source_id}: {e}")
+        return 0
+
+def upsert_chunks(chunks, user_id):
     """
     Inserts or updates chunks in the vector store using the hash as a unique key.
     Uses a direct SQL query to check for existence (without embedding).
     :param chunks: List of document chunks to insert
     :return: Number of chunks inserted/updated
+    :param user_id: the user these chunks belong to
     """
     global vector_store
     if vector_store is None:
@@ -78,11 +101,12 @@ def upsert_chunks(chunks):
         
         # add the hash in metadata for tracking
         chunk.metadata["chunk_hash"] = chunk_hash
+        chunk.metadata["user_id"] = user_id
         
         # Verify if this chunk already exists via direct SQL
-        if chunk_exists_in_db(chunk_hash):
+        if chunk_exists_in_db(chunk_hash, user_id):
             # chunk already exists, we delete it and re-insert it
-            delete_chunk_by_hash(chunk_hash)
+            delete_chunk_by_hash(chunk_hash, user_id)
             updated_count += 1
         else:
             inserted_count += 1
@@ -155,7 +179,7 @@ def clean_documents(docs):
     
     return docs
 
-def ingest_pdf(path, source_id=None):
+def ingest_pdf(path, user_id, source_id=None):
     """
     Ingest a PDF file, split it into chunks, and index it in the vector store.
     :param path: Path to the PDF file to be ingested
@@ -173,16 +197,17 @@ def ingest_pdf(path, source_id=None):
         d.metadata["source_id"] = source_id or path
         d.metadata["file_type"] = "pdf"
         d.metadata["language"] = detect_language(d.page_content)
+        d.metadata["user_id"] = user_id
 
     splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
     chunks = splitter.split_documents(docs)
     
     print(f"Indexing of {len(chunks)} chunks...")
-    upsert_chunks(chunks)
+    upsert_chunks(chunks, user_id)
     print(f"Chunks processed with upsert logic.")
     return vector_store
 
-def ingest_txt(path, source_id=None):
+def ingest_txt(path, user_id, source_id=None):
     """
     Ingest a TXT file, split it into chunks, and index it in the vector store.
     :param path: Path to the TXT file to be ingested
@@ -200,16 +225,17 @@ def ingest_txt(path, source_id=None):
         d.metadata["source_id"] = source_id or path
         d.metadata["file_type"] = "txt"
         d.metadata["language"] = detect_language(d.page_content)
+        d.metadata["user_id"] = user_id
 
     splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
     chunks = splitter.split_documents(docs)
     
     print(f"Indexing of {len(chunks)} chunks...")
-    upsert_chunks(chunks)
+    upsert_chunks(chunks, user_id)
     print(f"Chunks processed with upsert logic.")
     return vector_store
 
-def ingest_pptx(path, source_id=None):
+def ingest_pptx(path, user_id, source_id=None):
     """
     Ingest a PPTX file, split it into chunks, and index it in the vector store.
     :param path: Path to the PPTX file to be ingested
@@ -227,16 +253,17 @@ def ingest_pptx(path, source_id=None):
         d.metadata["source_id"] = source_id or path
         d.metadata["file_type"] = "pptx"
         d.metadata["language"] = detect_language(d.page_content)
+        d.metadata["user_id"] = user_id
 
     splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
     chunks = splitter.split_documents(docs)
 
     print(f"Indexing of {len(chunks)} chunks...")
-    upsert_chunks(chunks)
+    upsert_chunks(chunks, user_id)
     print(f"Chunks processed with upsert logic.")
     return vector_store
 
-def ingest_excel(path, source_id=None):
+def ingest_excel(path, user_id, source_id=None):
     """
     Ingest an Excel file, split it into chunks, and index it in the vector store.
     :param path: Path to the Excel file to be ingested
@@ -262,17 +289,18 @@ def ingest_excel(path, source_id=None):
             d.metadata["file_type"] = "excel"
             d.metadata["sheet_name"] = sheet_name
             d.metadata["language"] = detect_language(d.page_content) 
+            d.metadata["user_id"] = user_id
         docs.extend(sheet_docs)
 
     splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
     chunks = splitter.split_documents(docs)
 
     print(f"Indexing of {len(chunks)} chunks...")
-    upsert_chunks(chunks)
+    upsert_chunks(chunks, user_id)
     print(f"Chunks processed with upsert logic.")
     return vector_store
 
-def ingest_csv(path, source_id=None):
+def ingest_csv(path, user_id, source_id=None):
     """
     Ingest a CSV file, split it into chunks, and index it in the vector store.
     :param path: Path to the CSV file to be ingested
@@ -290,15 +318,17 @@ def ingest_csv(path, source_id=None):
         d.metadata["source_id"] = source_id or path
         d.metadata["file_type"] = "csv"
         d.metadata["language"] = detect_language(d.page_content)
+        d.metadata["user_id"] = user_id
+
     splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
     chunks = splitter.split_documents(docs)
     
     print(f"Indexing of {len(chunks)} chunks...")
-    upsert_chunks(chunks)
+    upsert_chunks(chunks, user_id)
     print(f"Chunks processed with upsert logic.")
     return vector_store
 
-def ingest_docx(path, source_id=None):
+def ingest_docx(path, user_id, source_id=None):
     """
     Ingest a DOCX file, split it into chunks, and index it in the vector store.
     :param path: Path to the DOCX file to be ingested
@@ -316,11 +346,12 @@ def ingest_docx(path, source_id=None):
         d.metadata["source_id"] = source_id or path
         d.metadata["file_type"] = "docx"
         d.metadata["language"] = detect_language(d.page_content)
+        d.metadata["user_id"] = user_id
 
     splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
     chunks = splitter.split_documents(docs)
     
     print(f"Indexing of {len(chunks)} chunks...")
-    upsert_chunks(chunks)
+    upsert_chunks(chunks, user_id)
     print(f"Chunks processed with upsert logic.")
     return vector_store

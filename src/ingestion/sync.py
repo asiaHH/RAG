@@ -2,7 +2,7 @@ import os
 import psycopg2
 from src.db.catalog import DocumentCatalog
 from src.config import PSYCOPG2_CONNECTION_STRING
-from src.ingestion.loaders import ingest_pdf, ingest_txt, ingest_pptx, ingest_excel, ingest_csv, ingest_docx
+from src.ingestion.loaders import ingest_pdf, ingest_txt, ingest_pptx, ingest_excel, ingest_csv, ingest_docx, delete_chunks_by_source
 from src.ingestion import pipeline
 
 # extensions authorized for ingestion
@@ -20,16 +20,17 @@ def ensure_bm25_index():
             conn.commit()
     print("Index BM25 vérifié/créé.")
 
-def sync_collection(directory: str = "data"):
+def sync_collection(directory: str, user_id: str):
     """
     Synchronize the vector store with the files in the specified directory. 
     It detects new, modified, and deleted files and updates the vector store accordingly.
     Only txt, pptx, pdf, docx, xlsx and csv files are processed.
     :param directory: The directory to synchronize (default is "data")
     :return: Updated vector store
+    :param user_id: the user this sync belongs to
     """
     global vector_store
-    print(f"SYNCHRONIZATION of the directory {directory}...")
+    print(f"SYNCHRONIZATION of the directory {directory} for user {user_id}...")
 
     catalog = DocumentCatalog(PSYCOPG2_CONNECTION_STRING)
 
@@ -38,13 +39,12 @@ def sync_collection(directory: str = "data"):
 
     ensure_bm25_index()
 
-    current_files = catalog.scan_directory(directory)
+    current_files = catalog.scan_directory(directory, user_id)
     if not current_files:
         print("No files found in the directory.")
         return pipeline.vector_store
 
     # Filter to keep only allowed files
-    import os
     current_files = [
         f for f in current_files 
         if os.path.splitext(f["file_path"])[1].lower() in ALLOWED_EXTENSIONS
@@ -54,7 +54,7 @@ def sync_collection(directory: str = "data"):
         print("No allowed files found in the directory (only txt, pptx, pdf, docx, xlsx, csv are processed).")
         return pipeline.vector_store
 
-    indexed_files = catalog.get_indexed_files()
+    indexed_files = catalog.get_indexed_files(user_id)
     indexed_set = {f["source_id"]for f in indexed_files}
 
     to_add = [] 
@@ -82,26 +82,26 @@ def sync_collection(directory: str = "data"):
         pipeline.init_vector_store()
     
     for source_id in set(to_delete):
-        print(f"Removal of {source_id}...")
-        pipeline.vector_store.delete(where={"source_id": source_id})
-        catalog.delete_file(source_id)
+        print(f"Removal of {source_id} for user {user_id}...")
+        delete_chunks_by_source(source_id, user_id)
+        catalog.delete_file(source_id, user_id)
 
     for file_info in to_add:
         catalog.add_or_update_file(file_info)
         path = file_info["file_path"]
 
         if path.endswith(".pdf"):
-            ingest_pdf(file_info["file_path"], source_id=file_info["source_id"])
+            ingest_pdf(file_info["file_path"], user_id=user_id, source_id=file_info["source_id"])
         elif path.endswith(".txt"):
-            ingest_txt(file_info["file_path"], source_id=file_info["source_id"])
+            ingest_txt(file_info["file_path"], user_id=user_id, source_id=file_info["source_id"])
         elif path.endswith(".pptx"):
-            ingest_pptx(file_info["file_path"], source_id=file_info["source_id"])
+            ingest_pptx(file_info["file_path"], user_id=user_id, source_id=file_info["source_id"])
         elif path.endswith(".xlsx"):
-            ingest_excel(file_info["file_path"], source_id=file_info["source_id"])
+            ingest_excel(file_info["file_path"], user_id=user_id, source_id=file_info["source_id"])
         elif path.endswith(".csv"):
-            ingest_csv(file_info["file_path"], source_id=file_info["source_id"])
+            ingest_csv(file_info["file_path"], user_id=user_id, source_id=file_info["source_id"])
         elif path.endswith(".docx"):
-            ingest_docx(file_info["file_path"], source_id=file_info["source_id"])
+            ingest_docx(file_info["file_path"], user_id=user_id, source_id=file_info["source_id"])
 
     print("Synchronization completed.")
     return pipeline.vector_store
