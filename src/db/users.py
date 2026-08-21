@@ -6,24 +6,6 @@ from typing import List, Dict, Optional
 class Users:
     def __init__(self, connection_string: str):
         self.connection_string = connection_string
-        self._init_db()
-
-    def _init_db(self):
-        """
-        Initializes the database by creating the users table if it doesn't exist.
-        """
-        with psycopg2.connect(self.connection_string) as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS users (
-                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                        email TEXT NOT NULL UNIQUE,
-                        password_hash TEXT NOT NULL,
-                        is_admin BOOLEAN NOT NULL DEFAULT false,
-                        created_at TIMESTAMP DEFAULT now()
-                    );
-                """)
-                conn.commit()
 
     def create_user(self, email: str, password: str, is_admin: bool = False) -> str:
         """

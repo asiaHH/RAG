@@ -1,42 +1,15 @@
-import psycopg2
 from psycopg2.extras import Json
 from typing import List, Dict, Optional
-from datetime import datetime
+from src.db.connection import get_scoped_connection
+
 
 class Conversation:
     def __init__(self, connection_string: str):
         self.connection_string = connection_string
-        self._init_db()
 
-    def _init_db(self):
-        with psycopg2.connect(self.connection_string) as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS conversations (
-                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                        user_id UUID NOT NULL,
-                        title TEXT,
-                        created_at TIMESTAMP DEFAULT now()
-                    );
-                """)
-                cur.execute("""
-                    ALTER TABLE conversations
-                    ADD COLUMN IF NOT EXISTS user_id UUID;
-                """)
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS messages (
-                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                        conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
-                        role TEXT NOT NULL,
-                        content TEXT NOT NULL,
-                        sources JSONB,
-                        created_at TIMESTAMP DEFAULT now()
-                    );
-                """)
-                conn.commit()
 
     def create_conversation(self, user_id: str, title: str = "Nouvelle discussion") -> str:
-        with psycopg2.connect(self.connection_string) as conn:
+        with get_scoped_connection(self.connection_string, user_id) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "INSERT INTO conversations (user_id, title) VALUES (%s, %s) RETURNING id;",
@@ -47,7 +20,7 @@ class Conversation:
                 return str(conv_id)
 
     def add_message(self, conversation_id: str, role: str, content: str, sources: Optional[list] = None):
-        with psycopg2.connect(self.connection_string) as conn:
+        with get_scoped_connection(self.connection_string, user_id) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -59,7 +32,7 @@ class Conversation:
                 conn.commit()
 
     def list_conversations(self, user_id: str) -> List[Dict]:
-        with psycopg2.connect(self.connection_string) as conn:
+        with get_scoped_connection(self.connection_string, user_id) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT id, title, created_at FROM conversations WHERE user_id = %s ORDER BY created_at DESC;",
@@ -71,7 +44,7 @@ class Conversation:
                 ]
 
     def load_messages(self, conversation_id: str, user_id: str) -> List[Dict]:
-        with psycopg2.connect(self.connection_string) as conn:
+        with get_scoped_connection(self.connection_string, user_id) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -88,7 +61,7 @@ class Conversation:
                 ]
 
     def conversation_belongs_to_user(self, conversation_id: str, user_id: str) -> bool:
-        with psycopg2.connect(self.connection_string) as conn:
+        with get_scoped_connection(self.connection_string, user_id) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT 1 FROM conversations WHERE id = %s AND user_id = %s;",
@@ -97,7 +70,7 @@ class Conversation:
                 return cur.fetchone() is not None
 
     def delete_conversation(self, conversation_id: str, user_id: str):
-        with psycopg2.connect(self.connection_string) as conn:
+        with get_scoped_connection(self.connection_string, user_id) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "DELETE FROM conversations WHERE id = %s AND user_id = %s;",

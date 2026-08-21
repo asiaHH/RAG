@@ -77,3 +77,5 @@ deepeval==4.1.5
 langchain-google-genai==4.3.2
 bcrypt==5.0.0
 pyjwt==2.13.0
+alembic==1.19.1
+streamlit-cookies-controller==0.0.4

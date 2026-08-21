@@ -4,7 +4,17 @@ Ce projet implémente un système RAG (Retrieval Augmented Generation)
 permettant d’indexer, synchroniser et interroger des documents
 multiformats (PDF, DOCX, TXT, PPTX, XLSX, CSV).
 
-PROJET EN COURS
+## Contexte et objectifs
+
+Ce projet est né comme un terrain d'expérimentation pour explorer en profondeur l'architecture d'un système RAG en production: retrieval hybride, évaluation rigoureuse, authentification multi-utilisateur, plutôt qu'un simple prototype de démonstration.
+
+Le cas d'usage cible est un outil destiné à des enseignants : chacun peut indexer ses propres supports de cours et interroger son corpus de manière
+isolée et sécurisée. Mais il peut être utilisé par n'importe qui. Ce choix a guidé plusieurs décisions d'architecture concrètes, notamment l'isolation stricte des données par utilisateur (filtrage applicatif + Row-Level Security) et une évaluation qui privilégie la fidélité au contexte (éviter les hallucinations). 
+
+
+Prochaines étapes:
+- déploiement cloud, 
+- endpoints admin
 ---
 
 ## Stack technique
@@ -13,11 +23,14 @@ PROJET EN COURS
 |-----------|------|
 | FastAPI | Backend API |
 | PostgreSQL + pgvector | Stockage des embeddings |
+| ParadeDB (pg_search) | Index BM25 pour la recherche lexicale |
 | LangChain | Pipeline RAG |
 | MistralAI | Embeddings + génération |
-| Gemini Pro | LLM juge (évaluation) |
+| Gemini Flash | LLM juge (évaluation) |
 | DeepEval | Framework d'évaluation |
 | Streamlit | Interface utilisateur |
+| JWT | Authentification multi-utilisateur |
+| Alembic | Migrations de schéma versionnées |
 | Docker + pgAdmin | Orchestration & administration |
 
 ---
@@ -39,34 +52,60 @@ Principe : nettoyer le minimum nécessaire, chaque transformation supprime de l'
 - Suppression des caractères invisibles (Zero-Width)
 - Normalisation des espaces multiples
 
-### Évaluation (v1)
+### Retrieval hybride
+- Recherche sémantique (pgvector) + recherche lexicale (BM25 via index ParadeDB natif, requêté en SQL direct plutôt qu'un retriever en mémoire)
+- Fusion des résultats par Reciprocal Rank Fusion (RRF) via `EnsembleRetriever`
+- Poids ajustables entre les deux composantes selon les résultats d'évaluation
+
+### Évaluation
 - Génération de dataset via Mistral (questions variées, dimensions configurables)
 - Round-trip check : vérifie que les questions positives retrouvent leur chunk source
 - Ratios positifs/négatifs paramétrables
-- LLM juge : Gemini Pro (pour éviter le self-enhancement bias)
+- LLM juge : Gemini Flash (pour éviter le self-enhancement bias)
+
+### Authentification & isolation multi-utilisateur
+- Authentification par JWT (inscription, connexion, sessions)
+- Isolation des données par utilisateur : chaque compte n'accède qu'à ses propres documents et conversations
+- Double couche de protection : filtrage applicatif (requêtes SQL) + Row-Level Security PostgreSQL en renfort
+- Rôle applicatif dédié (privilèges restreints, séparé du superuser de la base)
+- Historique de conversations persistant, consultable et supprimable
 
 ## Installation
+
+1. Copier `.env.example` vers `.env` et renseigner les valeurs (clés API, mots de passe)
+2. Créer et activer le virtualenv
+```bash
+source venv/bin/activate
+```
+3. Démarrer la base de données :
 ```bash
 docker-compose up -d
-pip install -r requirements.txt
-streamlit run src/app.py
 ```
-
-
-## Lancer l'application
-
+4. Créer le rôle applicatif Postgres (une seule fois) :
 ```bash
-# Activer le virtualenv
-source venv/bin/activate
-
-# Lancer l'API
+docker compose exec db psql -U $POSTGRES_USER -d vector_db -c "CREATE ROLE rag_app_user WITH LOGIN PASSWORD '<mot_de_passe>' NOBYPASSRLS;"
+docker compose exec db psql -U $POSTGRES_USER -d vector_db -c "GRANT ALL PRIVILEGES ON DATABASE vector_db TO rag_app_user; GRANT ALL PRIVILEGES ON SCHEMA public TO rag_app_user; GRANT CREATE ON SCHEMA public TO rag_app_user;"
+```
+5. Installer les dépendances :
+```bash
+pip install -r requirements.txt
+```
+6. Appliquer les migrations :
+```bash
+alembic upgrade head
+```
+7. Lancer l'API 
+```bash
 uvicorn src.api:app --host 0.0.0.0 --port 8000 --reload
-
-# Lancer l'interface
+```
+8. Lancer l'interface 
+```bash
 streamlit run src/app.py
 ```
-
-PgAdmin : http://localhost:8080
+9. Lancer Pgadmin via navigateur (Optionnel)
+```bash
+http://localhost:8080
+```
 
 ---
 
@@ -146,7 +185,6 @@ Chaque type de question évalue un étage différent du pipeline, avec des métr
 |-------|-----------------------|-----------|-------------------|
 | **Retrieval** | Pertinentes uniquement | Precision@K, Recall@K, MRR, Hit Rate@K | Le retriever retrouve-t-il le bon chunk source ? |
 | **Génération** | Pertinentes uniquement | Faithfulness, Answer Relevancy | La réponse générée est-elle fidèle au contexte et pertinente vis-à-vis de la question ? |
-| **Abstention** | Hors-corpus uniquement | (prochainement) | Le système reconnaît-il correctement l'absence d'information plutôt que d'inventer une réponse ? |
 
 
 **Pourquoi ne pas tout évaluer ensemble ?** Les métriques de retrieval supposent l'existence d'un document pertinent à retrouver, elles n'ont pas de sens sur une question conçue pour n'avoir aucune réponse dans le corpus. De même, Faithfulness et Answer Relevancy sont conçues pour juger la qualité d'une réponse factuelle, pas la pertinence d'un refus de répondre.
@@ -205,7 +243,6 @@ Cela pointe vers deux pistes d'amélioration : un chunking plus fin ou une contr
 
 
 Le système répond correctement et cite fidèlement sa source (Faithfulness parfait), mais ajoute un bloc entier répondant à une question non posée, présente dans le même chunk récupéré. Ce dérapage fait chuter l'Answer Relevancy malgré une réponse principale exacte, illustrant le pattern identifié : un chunking au niveau document (plutôt que passage) amène le système à traiter le contexte comme un ensemble à couvrir plutôt qu'une source ciblée pour répondre précisément à la question posée.
-
 
 
 

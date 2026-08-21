@@ -28,7 +28,7 @@ class RequestModel(BaseModel):
     conversation_id: Optional[str] = None
 
 class SyncRequest(BaseModel):
-    directory: str = "data"
+    directory: Optional[str] = None
 
 class CreateConversationRequest(BaseModel):
     title: str = "Nouvelle discussion"
@@ -110,7 +110,7 @@ def delete_conversation(conversation_id: str, user: dict = Depends(get_current_u
 def add_message_to_conv(conversation_id: str, req: AddMessageRequest, user: dict = Depends(get_current_user)):
     if not conversation_store.conversation_belongs_to_user(conversation_id, user["sub"]):
         raise HTTPException(status_code=404, detail="Conversation introuvable")
-    conversation_store.add_message(conversation_id, req.role, req.content, req.sources)
+    conversation_store.add_message(conversation_id, user["sub"], req.role, req.content, req.sources)
     return {"status": "added"}
 
 
@@ -140,7 +140,7 @@ async def sync_collection_endpoint(request: SyncRequest = None, user: dict = Dep
     :param request: A SyncRequest object containing the directory to synchronize
     :return: A JSON response indicating the success or failure of the synchronization process
     """
-    directory = request.directory if request else f"data/{user['sub']}"
+    directory = request.directory if (request and request.directory) else f"data/{user['sub']}"
     try:
         if pipeline.vector_store is None:
             pipeline.init_vector_store()
@@ -201,8 +201,8 @@ async def ask_question(request: RequestModel, user: dict = Depends(get_current_u
 
         if request.conversation_id:
             if conversation_store.conversation_belongs_to_user(request.conversation_id, user["sub"]):
-                conversation_store.add_message(request.conversation_id, "user", request.query)
-                conversation_store.add_message(request.conversation_id, "assistant", answer, sources)
+                conversation_store.add_message(request.conversation_id, user["sub"], "user", request.query)
+                conversation_store.add_message(request.conversation_id, user["sub"], "assistant", answer, sources)
         
         return {
             "question": request.query,

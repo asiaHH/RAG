@@ -6,13 +6,13 @@ from langchain_community.document_loaders import DataFrameLoader
 import pandas as pd
 import re
 import hashlib
-import psycopg2
 from src.ingestion.pipeline import vector_store, init_vector_store
 from src.config import CHUNK_OVERLAP, CHUNK_SIZE, PSYCOPG2_CONNECTION_STRING
-from lingua import LanguageDetectorBuilder
+from src.db.connection import get_scoped_connection
+from lingua import Language, LanguageDetectorBuilder
 
 # Initialize the language detector once
-detector = LanguageDetectorBuilder.from_all_languages().build()
+detector = LanguageDetectorBuilder.from_languages(Language.FRENCH, Language.ENGLISH).build()
 
 def get_chunk_hash(content: str) -> str:
     """
@@ -29,7 +29,7 @@ def chunk_exists_in_db(chunk_hash: str, user_id: str) -> bool:
     :return: True if the chunk exists, False otherwise
     """
     try:
-        with psycopg2.connect(PSYCOPG2_CONNECTION_STRING) as conn:
+        with get_scoped_connection(PSYCOPG2_CONNECTION_STRING, user_id) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT 1 FROM langchain_pg_embedding WHERE cmetadata->>'chunk_hash' = %s AND cmetadata->>'user_id' = %s LIMIT 1",
@@ -48,7 +48,7 @@ def delete_chunk_by_hash(chunk_hash: str, user_id: str) -> bool:
     :return: True if deleted, False otherwise
     """
     try:
-        with psycopg2.connect(PSYCOPG2_CONNECTION_STRING) as conn:
+        with get_scoped_connection(PSYCOPG2_CONNECTION_STRING, user_id) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "DELETE FROM langchain_pg_embedding WHERE cmetadata->>'chunk_hash' = %s AND cmetadata->>'user_id' = %s",
@@ -66,7 +66,7 @@ def delete_chunks_by_source(source_id: str, user_id: str) -> int:
     :return: Number of chunks deleted
     """
     try:
-        with psycopg2.connect(PSYCOPG2_CONNECTION_STRING) as conn:
+        with get_scoped_connection(PSYCOPG2_CONNECTION_STRING, user_id) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """

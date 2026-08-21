@@ -2,44 +2,13 @@ import hashlib
 import os
 from pathlib import Path
 from typing import Dict, List
-import psycopg2
 from datetime import datetime
+from src.db.connection import get_scoped_connection
+
 
 class DocumentCatalog:
     def __init__(self, connection_string: str):
         self.connection_string = connection_string
-        self._init_db()
-
-    def _init_db(self):
-        """
-        Initialize the database by creating the document_catalog table if it doesn't exist.
-        
-        :param self: Description
-        """
-        with psycopg2.connect(self.connection_string) as conn:
-            with conn.cursor() as cur:
-                cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-                cur.execute("CREATE EXTENSION IF NOT EXISTS pg_search;")
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS document_catalog (
-                        source_id TEXT NOT NULL,
-                        user_id UUID NOT NULL,
-                        file_path TEXT NOT NULL,
-                        file_type TEXT NOT NULL,
-                        last_modified TIMESTAMP NOT NULL,
-                        indexed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        content_hash TEXT NOT NULL,
-                        PRIMARY KEY (user_id, source_id)
-                    );
-                """)
-
-                cur.execute("""
-                    ALTER TABLE document_catalog
-                    ADD COLUMN IF NOT EXISTS user_id UUID;
-                """)
-
-                conn.commit()
-                print("Table document_catalog créée.")
 
     def get_file_hash(self, file_path: str) -> str:
         """
@@ -82,7 +51,7 @@ class DocumentCatalog:
         Retrieves all indexed files belonging to a given user.
         :param user_id: the user whose files to retrieve
         """
-        with psycopg2.connect(self.connection_string) as conn:
+        with get_scoped_connection(self.connection_string, user_id) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT source_id, file_path, content_hash FROM document_catalog WHERE user_id = %s;",
                 (user_id,)
@@ -103,7 +72,8 @@ class DocumentCatalog:
         Adds a new file or updates the metadata of an existing file in the catalog.
         :param file_info: Dictionary containing file metadata (source_id, file_path, file_type, last_modified, content_hash)
         """
-        with psycopg2.connect(self.connection_string) as conn:
+        user_id= file_info["user_id"]
+        with get_scoped_connection(self.connection_string, user_id) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     INSERT INTO document_catalog (source_id, user_id, file_path, file_type, last_modified, content_hash)
@@ -121,7 +91,7 @@ class DocumentCatalog:
         :param source_id: The unique identifier of the file to delete
         :param user_id: the user this file belongs to
         """
-        with psycopg2.connect(self.connection_string) as conn:
+        with get_scoped_connection(self.connection_string, user_id) as conn:
             with conn.cursor() as cur:
                 cur.execute("DELETE FROM document_catalog WHERE source_id = %s AND user_id = %s;", (source_id, user_id))
                 conn.commit()
